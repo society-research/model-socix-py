@@ -6,6 +6,8 @@ export PATH=/usr/local/cuda-12.2/bin:$PATH
 # TODO: do it inside venv
 python3 -m pip install -r requirements.txt
 
+git submodule update --init --recursive
+
 [[ $CLEAN == true ]] && rm -rf third_party/FLAMEGPU2/build
 mkdir -p third_party/FLAMEGPU2/build
 cd third_party/FLAMEGPU2/build
