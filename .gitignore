@@ -1,3 +1,5 @@
 *.swp
 *~
 *.vim
+__pycache__/
+venv/
