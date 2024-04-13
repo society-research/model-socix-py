@@ -1,3 +1,7 @@
+lint:
+	flake8 *.py
 fmt:
-	black --exclude=third_party .
+	@# testing excludes:
+	@#black --exclude='third_party|venv' --check --verbose .
+	black --exclude='third_party|venv' .
 .PHONY: fmt
