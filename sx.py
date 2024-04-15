@@ -34,9 +34,10 @@ def vec2Length(x: int, y: int) -> float:
 
 
 @pyflamegpu.agent_function
-def behave(
+def human_behavior(
     message_in: pyflamegpu.MessageSpatial2D, message_out: pyflamegpu.MessageNone
 ):
+    # TODO: this should be agent_function_condition
     agent_x = pyflamegpu.getVariableInt("x")
     agent_y = pyflamegpu.getVariableInt("y")
     ap = pyflamegpu.getVariableFloat("actionpotential")
@@ -50,33 +51,45 @@ def behave(
             pyflamegpu.environment.getPropertyFloat("AP_PER_TICK_RESTING"),
         )
         return
-    for message in message_in.wrap(agent_x, agent_y):
-        message_x = message.getVariableInt("x")
-        message_y = message.getVariableInt("y")
-        d = vec2Length(agent_x - message_x, agent_y - message_y)
-        if can_collect_resource and d < pyflamegpu.environment.getPropertyFloat(
-            "RESOURCE_COLLECTION_RANGE"
-        ):
-            ap -= pyflamegpu.environment.getPropertyFloat("AP_COLLECT_RESOURCE")
-            pyflamegpu.setVariableFloat("actionpotential", ap)
-            resources = pyflamegpu.getVariableInt("resources")
-            resources += 1
-            pyflamegpu.setVariableInt("resources", resources)
-            return
-        if can_move and d <= pyflamegpu.environment.getPropertyFloat(
-            "HUMAN_MOVE_RANGE"
-        ):
-            dx = math.abs(agent_x - message_x)
-            dy = math.abs(agent_y - message_y)
-            if dx > dy:
-                x = agent_x + (message_x - agent_x) / dx
-                pyflamegpu.setVariableInt("x", x)
-            else:
-                y = agent_y + (message_y - agent_y) / dy
-                pyflamegpu.setVariableInt("y", y)
-            ap -= pyflamegpu.environment.getPropertyFloat("AP_MOVE")
-            pyflamegpu.setVariableFloat("actionpotential", ap)
-            break
+
+    # TODO: extract this into a separate agent_function
+    # should be sys.float_info.max (but traspiling is not supported)
+    closest_resource = 1.7976931348623157e308
+    closest_resource_x = 0.0
+    closest_resource_y = 0.0
+    for resource in message_in.wrap(agent_x, agent_y):
+        resource_x = resource.getVariableInt("x")
+        resource_y = resource.getVariableInt("y")
+        d = vec2Length(agent_x - resource_x, agent_y - resource_y)
+        if d < closest_resource:
+            closest_resource = d
+            closest_resource_x = resource_x
+            closest_resource_y = resource_y
+
+    if (
+        can_collect_resource
+        and closest_resource
+        < pyflamegpu.environment.getPropertyFloat("RESOURCE_COLLECTION_RANGE")
+    ):
+        ap -= pyflamegpu.environment.getPropertyFloat("AP_COLLECT_RESOURCE")
+        pyflamegpu.setVariableFloat("actionpotential", ap)
+        resources = pyflamegpu.getVariableInt("resources")
+        resources += 1
+        pyflamegpu.setVariableInt("resources", resources)
+        return
+    if can_move and closest_resource <= pyflamegpu.environment.getPropertyFloat(
+        "HUMAN_MOVE_RANGE"
+    ):
+        dx = math.abs(agent_x - closest_resource_x)
+        dy = math.abs(agent_y - closest_resource_y)
+        if dx > dy:
+            x = agent_x + (closest_resource_x - agent_x) / dx
+            pyflamegpu.setVariableInt("x", x)
+        else:
+            y = agent_y + (closest_resource_y - agent_y) / dy
+            pyflamegpu.setVariableInt("y", y)
+        ap -= pyflamegpu.environment.getPropertyFloat("AP_MOVE")
+        pyflamegpu.setVariableFloat("actionpotential", ap)
     return pyflamegpu.ALIVE
 
 
@@ -117,10 +130,10 @@ FLAMEGPU_AGENT_FUNCTION(output_location, flamegpu::MessageNone, flamegpu::Messag
     return flamegpu::ALIVE;
 }
 """
-CUDA_behave = """
+CUDA_human_behavior = """
 FLAMEGPU_DEVICE_FUNCTION float vec2Length(int x, int y) { return sqrtf(((x * x) + (y * y))); }
 
-FLAMEGPU_AGENT_FUNCTION(behave, flamegpu::MessageSpatial2D, flamegpu::MessageNone) {
+FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageSpatial2D, flamegpu::MessageNone) {
     auto agent_x = FLAMEGPU->getVariable<int>("x");
     auto agent_y = FLAMEGPU->getVariable<int>("y");
     for (const auto &message : FLAMEGPU->message_in.wrap(agent_x, agent_y)) {
@@ -157,7 +170,7 @@ FLAMEGPU_AGENT_FUNCTION(behave, flamegpu::MessageSpatial2D, flamegpu::MessageNon
 
 def make_simulation():
     ctx = ostruct.OpenStruct()
-    model = pyflamegpu.ModelDescription("test_behave")
+    model = pyflamegpu.ModelDescription("test_human_behavior")
     env = model.Environment()
     for key in C:
         if key[0] == "_":
@@ -167,8 +180,6 @@ def make_simulation():
     message.setRadius(C.ENV_MAX)
     message.setMin(0, 0)
     message.setMax(C.ENV_MAX, C.ENV_MAX)
-    # message.newVariableInt("x")
-    # message.newVariableInt("y")
     message.newVariableID("id")
     ctx.human = make_human(model)
     ctx.resource = make_resource(model)
@@ -178,17 +189,19 @@ def make_simulation():
         "ouput_location", output_location_transpiled
     )
     output_location_description.setMessageOutput("resource_location")
-    behave_transpiled = pyflamegpu.codegen.translate(behave)
-    # behave_transpiled = CUDA_behave
-    behave_description = ctx.human.newRTCFunction("behave", behave_transpiled)
-    behave_description.setMessageInput("resource_location")
+    human_behavior_transpiled = pyflamegpu.codegen.translate(human_behavior)
+    # human_behavior_transpiled = CUDA_human_behavior
+    human_behavior_description = ctx.human.newRTCFunction(
+        "human_behavior", human_behavior_transpiled
+    )
+    human_behavior_description.setMessageInput("resource_location")
     if "-v" in sys.argv:
         print(f"output_location_transpiled:\n'''{output_location_transpiled}'''")
-        print(f"behave_transpiled:\n'''{behave_transpiled}'''")
+        print(f"human_behavior_transpiled:\n'''{human_behavior_transpiled}'''")
     # Identify the root of execution
     # model.addExecutionRoot(output_location_description)
     model.newLayer("layer 1").addAgentFunction(output_location_description)
-    model.newLayer("layer 2").addAgentFunction(behave_description)
+    model.newLayer("layer 2").addAgentFunction(human_behavior_description)
     # Add the step function to the model.
     # step_validation_fn = step_validation()
     # model.addStepFunction(step_validation_fn)

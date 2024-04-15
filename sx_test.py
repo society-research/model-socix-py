@@ -133,4 +133,6 @@ def test_recover_actionpotential_by_sleeping():
     simulation.step()
     simulation.getPopulationData(humans)
     assert humans[0].getVariableInt("resources") == 0, "no AP to collect the resource!"
-    assert humans[0].getVariableFloat("actionpotential") == C.AP_PER_TICK_RESTING, "resting restored some AP"
+    assert (
+        humans[0].getVariableFloat("actionpotential") == C.AP_PER_TICK_RESTING
+    ), "resting restored some AP"
