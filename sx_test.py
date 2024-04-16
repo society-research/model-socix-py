@@ -136,3 +136,32 @@ def test_recover_actionpotential_by_sleeping():
     assert (
         humans[0].getVariableFloat("actionpotential") == C.AP_PER_TICK_RESTING
     ), "resting restored some AP"
+    simulation.step()
+    simulation.getPopulationData(humans)
+    # TODO(maybe): add agent variable sleeping to count down ~8 hours
+    # assert humans[0].getVariableInt("resources") == 0, "still sleepnig"
+    # assert (
+    #     humans[0].getVariableFloat("actionpotential") == 2 * C.AP_PER_TICK_RESTING
+    # ), "resting restored some AP"
+    assert humans[0].getVariableInt("resources") == 1, "got enough AP now"
+
+
+def test_crowding_reduces_actionpotential():
+    model, simulation, ctx = make_simulation()
+    humans = pyflamegpu.AgentVector(ctx.human, 11)
+    for human in humans:
+        human.setVariableInt("x", 0)
+        human.setVariableInt("y", 0)
+        human.setVariableInt("resources", 0)
+        human.setVariableFloat("actionpotential", C.AP_DEFAULT)
+    resources = pyflamegpu.AgentVector(ctx.resource, 1)
+    resources[0].setVariableInt("x", 0)
+    resources[0].setVariableInt("y", 0)
+    simulation.setPopulationData(resources)
+    simulation.setPopulationData(humans)
+    simulation.step()
+    simulation.getPopulationData(humans)
+    for human in humans:
+        assert (
+            human.getVariableFloat("actionpotential") == C.AP_MOVE
+        ), "AP reduced to minimal movement by crowding"
