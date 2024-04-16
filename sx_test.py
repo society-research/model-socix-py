@@ -148,20 +148,18 @@ def test_recover_actionpotential_by_sleeping():
 
 def test_crowding_reduces_actionpotential():
     model, simulation, ctx = make_simulation()
-    humans = pyflamegpu.AgentVector(ctx.human, 11)
+    humans = pyflamegpu.AgentVector(ctx.human, 12)
     for human in humans:
         human.setVariableInt("x", 0)
         human.setVariableInt("y", 0)
         human.setVariableInt("resources", 0)
         human.setVariableFloat("actionpotential", C.AP_DEFAULT)
-    resources = pyflamegpu.AgentVector(ctx.resource, 1)
-    resources[0].setVariableInt("x", 0)
-    resources[0].setVariableInt("y", 0)
-    simulation.setPopulationData(resources)
     simulation.setPopulationData(humans)
     simulation.step()
     simulation.getPopulationData(humans)
     for human in humans:
-        assert (
-            human.getVariableFloat("actionpotential") == C.AP_MOVE
+        assert math.isclose(
+            human.getVariableFloat("actionpotential"),
+            C.AP_DEFAULT - C.AP_REDUCTION_BY_CROWDING,
+            rel_tol=1e-6,
         ), "AP reduced to minimal movement by crowding"

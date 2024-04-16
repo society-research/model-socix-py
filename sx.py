@@ -82,10 +82,8 @@ def human_perception_human_locations(
             close_humans += 1
     if close_humans >= pyflamegpu.environment.getPropertyInt("N_HUMANS_CROWDED"):
         ap = pyflamegpu.getVariableFloat("actionpotential")
-        pyflamegpu.setVariableFloat(
-            "actionpotential",
-            ap - pyflamegpu.environment.getPropertyInt("AP_REDUCTION_BY_CROWDING"),
-        )
+        ap -= pyflamegpu.environment.getPropertyFloat("AP_REDUCTION_BY_CROWDING")
+        pyflamegpu.setVariableFloat("actionpotential", ap)
 
 
 @pyflamegpu.agent_function
@@ -214,29 +212,38 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
 }
 """
 CUDA_human_perception_human_locations = """
-FLAMEGPU_AGENT_FUNCTION(human_perception_human_locations, flamegpu::MessageSpatial2D, flamegpu::MessageNone){
+FLAMEGPU_AGENT_FUNCTION(human_perception_human_locations, flamegpu::MessageSpatial2D,
+                        flamegpu::MessageNone) {
     auto id = FLAMEGPU->getID();
     auto human_x = FLAMEGPU->getVariable<int>("x");
     auto human_y = FLAMEGPU->getVariable<int>("y");
     auto close_humans = 0;
-    for (const auto& human : FLAMEGPU->message_in.wrap(human_x, human_y)){
-        if (human.getVariable<int>("id") == id){
+    for (const auto &human : FLAMEGPU->message_in.wrap(human_x, human_y)) {
+        if (human.getVariable<int>("id") == id) {
             continue;
         }
         printf("human[%02d] found human[%02d]\\n", id, human.getVariable<int>("id"));
         auto other_human_x = human.getVariable<int>("x");
         auto other_human_y = human.getVariable<int>("y");
-        if ((human_x == other_human_x && human_y == other_human_y)){
+        if ((human_x == other_human_x && human_y == other_human_y)) {
             close_humans += 1;
         }
     }
-	printf("found %d close humans\\n", close_humans);
-    if (close_humans >= FLAMEGPU->environment.getProperty<int>("N_HUMANS_CROWDED")){
+    printf("found %d close humans, >= %u\\n", close_humans,
+           FLAMEGPU->environment.getProperty<int>("N_HUMANS_CROWDED"));
+    if (close_humans >= FLAMEGPU->environment.getProperty<int>("N_HUMANS_CROWDED")) {
         auto ap = FLAMEGPU->getVariable<float>("actionpotential");
-        FLAMEGPU->setVariable<float>("actionpotential", (ap - FLAMEGPU->environment.getProperty<int>("AP_REDUCTION_BY_CROWDING")));
+        ap -= FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
+        printf("ap = %f\\n", ap);
+        FLAMEGPU->setVariable<float>("actionpotential", ap);
     }
 }
 """
+
+
+def vprint(*args, **kwargs):
+    if "-v" in sys.argv:
+        print(*args, **kwargs)
 
 
 def make_simulation():
@@ -246,11 +253,20 @@ def make_simulation():
     for key in C:
         if key[0] == "_":
             continue
-        env.newPropertyFloat(key, C[key])
+        val = C[key]
+        if type(val) == float:
+            vprint(f"env[{key},float] = {val}")
+            env.newPropertyFloat(key, val)
+        elif type(val) == int:
+            vprint(f"env[{key},int] = {val}")
+            env.newPropertyInt(key, val)
+        else:
+            raise RuntimeError("unknown environment variable type")
 
     def make_location_message(model, name):
         message = model.newMessageSpatial2D(name)
-        message.setRadius(C.ENV_MAX)
+        # XXX: setRadius: if not divided by 2, messages wrap around the borders and occur multiple times
+        message.setRadius(C.ENV_MAX / 2)
         message.setMin(0, 0)
         message.setMax(C.ENV_MAX, C.ENV_MAX)
         message.newVariableID("id")
@@ -285,7 +301,7 @@ def make_simulation():
     human_perception_human_locations_transpiled = pyflamegpu.codegen.translate(
         human_perception_human_locations
     )
-    human_perception_human_locations_transpiled = CUDA_human_perception_human_locations
+    # human_perception_human_locations_transpiled = CUDA_human_perception_human_locations
     human_perception_human_locations_description = ctx.human.newRTCFunction(
         "human_perception_human_locations",
         human_perception_human_locations_transpiled,
@@ -296,17 +312,16 @@ def make_simulation():
     human_behavior_description = ctx.human.newRTCFunction(
         "human_behavior", human_behavior_transpiled
     )
-    if "-v" in sys.argv:
-        print(
-            f"resource_output_location_transpiled:\n'''{resource_output_location_transpiled}'''"
-        )
-        print(
-            f"human_perception_resource_locations_transpiled:\n'''{human_perception_resource_locations_transpiled}'''"
-        )
-        print(
-            f"human_perception_human_locations_transpiled:\n'''{human_perception_human_locations_transpiled}'''"
-        )
-        print(f"human_behavior_transpiled:\n'''{human_behavior_transpiled}'''")
+    vprint(
+        f"resource_output_location_transpiled:\n'''{resource_output_location_transpiled}'''"
+    )
+    vprint(
+        f"human_perception_resource_locations_transpiled:\n'''{human_perception_resource_locations_transpiled}'''"
+    )
+    vprint(
+        f"human_perception_human_locations_transpiled:\n'''{human_perception_human_locations_transpiled}'''"
+    )
+    vprint(f"human_behavior_transpiled:\n'''{human_behavior_transpiled}'''")
 
     # Identify the root of execution
     # model.addExecutionRoot(resource_output_location_description)
@@ -316,7 +331,9 @@ def make_simulation():
     l2 = model.newLayer("layer 2: perception")
     l2.addAgentFunction(human_perception_resource_locations_description)
     # FIXME: this should also be layer 2 function, but gives an error when added there
-    model.newLayer("layer 2.1: FIXME").addAgentFunction(human_perception_human_locations_description)
+    model.newLayer("layer 2.1: FIXME").addAgentFunction(
+        human_perception_human_locations_description
+    )
     model.newLayer("layer 3: behavior").addAgentFunction(human_behavior_description)
     # Add the step function to the model.
     # step_validation_fn = step_validation()
@@ -333,7 +350,7 @@ def make_simulation():
 def main():
     model, simulation, ctx = make_simulation()
 
-    print("starting with:", sys.argv)
+    vprint("starting with:", sys.argv)
     simulation.initialise(sys.argv)
     if not simulation.SimulationConfig().input_file:
         # Seed the host RNG using the cuda simulations' RNG
