@@ -29,7 +29,7 @@ C = ostruct.OpenStruct(
     N_HUMANS_CROWDED=10,
 )
 # 2D space bondaries
-C.ENV_MAX = math.floor(sqbrt(C.AGENT_COUNT))
+C.ENV_MAX = 10
 # Restored AP per tick spend resting.
 C.AP_PER_TICK_RESTING = C.AP_DEFAULT / C.SLEEP_REQUIRED_PER_NIGHT
 # AP reduction caused by crowding, see @N_HUMANS_CROWDED
@@ -81,9 +81,9 @@ def human_perception_human_locations(
         if human_x == other_human_x and human_y == other_human_y:
             close_humans += 1
     if close_humans >= pyflamegpu.environment.getPropertyInt("N_HUMANS_CROWDED"):
-        ap = pyflamegpu.getVariableFloat("actionpotential")
-        ap -= pyflamegpu.environment.getPropertyFloat("AP_REDUCTION_BY_CROWDING")
-        pyflamegpu.setVariableFloat("actionpotential", ap)
+        pyflamegpu.setVariableInt("is_crowded", 1)
+    else:
+        pyflamegpu.setVariableInt("is_crowded", 0)
 
 
 @pyflamegpu.agent_function
@@ -91,28 +91,36 @@ def human_behavior(
     message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageNone
 ):
     ap = pyflamegpu.getVariableFloat("actionpotential")
+    if pyflamegpu.getVariableInt("is_crowded") == 1:
+        ap -= pyflamegpu.environment.getPropertyFloat("AP_REDUCTION_BY_CROWDING")
     can_collect_resource = ap >= pyflamegpu.environment.getPropertyFloat(
         "AP_COLLECT_RESOURCE"
     )
     can_move = ap >= pyflamegpu.environment.getPropertyFloat("AP_MOVE")
     if not (can_move or can_collect_resource):
-        pyflamegpu.setVariableFloat(
-            "actionpotential",
-            pyflamegpu.environment.getPropertyFloat("AP_PER_TICK_RESTING"),
-        )
-        return
-    if can_collect_resource and pyflamegpu.getVariableFloat(
+        ap += pyflamegpu.environment.getPropertyFloat("AP_PER_TICK_RESTING")
+    elif can_move and pyflamegpu.getVariableInt("is_crowded") == 1:
+        ap -= pyflamegpu.environment.getPropertyFloat("AP_MOVE")
+        d = 0
+        if pyflamegpu.random.uniformFloat() > 0.5:
+            d = 1
+        else:
+            d = -1
+        if pyflamegpu.random.uniformFloat() > 0.5:
+            pyflamegpu.setVariableInt("x", pyflamegpu.getVariableInt("x") + d)
+        else:
+            pyflamegpu.setVariableInt("y", pyflamegpu.getVariableInt("y") + d)
+    elif can_collect_resource and pyflamegpu.getVariableFloat(
         "closest_resource"
     ) < pyflamegpu.environment.getPropertyFloat("RESOURCE_COLLECTION_RANGE"):
         ap -= pyflamegpu.environment.getPropertyFloat("AP_COLLECT_RESOURCE")
-        pyflamegpu.setVariableFloat("actionpotential", ap)
         resources = pyflamegpu.getVariableInt("resources")
         resources += 1
         pyflamegpu.setVariableInt("resources", resources)
-        return
-    if can_move and pyflamegpu.getVariableFloat(
+    elif can_move and pyflamegpu.getVariableFloat(
         "closest_resource"
     ) <= pyflamegpu.environment.getPropertyFloat("HUMAN_MOVE_RANGE"):
+        ap -= pyflamegpu.environment.getPropertyFloat("AP_MOVE")
         agent_x = pyflamegpu.getVariableInt("x")
         agent_y = pyflamegpu.getVariableInt("y")
         dx = math.abs(agent_x - pyflamegpu.getVariableFloat("closest_resource_x"))
@@ -129,8 +137,7 @@ def human_behavior(
                 + (pyflamegpu.getVariableFloat("closest_resource_y") - agent_y) / dy
             )
             pyflamegpu.setVariableInt("y", y)
-        ap -= pyflamegpu.environment.getPropertyFloat("AP_MOVE")
-        pyflamegpu.setVariableFloat("actionpotential", ap)
+    pyflamegpu.setVariableFloat("actionpotential", ap)
     return pyflamegpu.ALIVE
 
 
@@ -155,6 +162,7 @@ def make_human(model):
     human.newVariableFloat("closest_resource")
     human.newVariableFloat("closest_resource_x")
     human.newVariableFloat("closest_resource_y")
+    human.newVariableInt("is_crowded")
     return human
 
 
@@ -276,10 +284,25 @@ def make_simulation():
     ctx.human = make_human(model)
     ctx.resource = make_resource(model)
 
+    def make_agent_function(name, py_fn=None, cuda_fn=None):
+        "Either `py_fn` or `cuda_fn` must be passed"
+        if py_fn is not None and cuda_fn is not None:
+            raise RuntimeError(
+                "either pass `py_fn` python function or `cuda_fn` cuda function"
+            )
+        if py_fn is not None:
+            cuda_fn = pyflamegpu.codegen.translate(py_fn)
+        description = ctx.resource.newRTCFunction(cuda_fn)
+        printv(f"{name}: '''\n{cuda_fn}'''")
+        return description
+
     # layer 1: location message output
     resource_output_location_transpiled = pyflamegpu.codegen.translate(output_location)
     resource_output_location_description = ctx.resource.newRTCFunction(
         "ouput_location", resource_output_location_transpiled
+    )
+    vprint(
+        f"resource_output_location_transpiled:\n'''{resource_output_location_transpiled}'''"
     )
     resource_output_location_description.setMessageOutput("resource_location")
 
@@ -296,8 +319,10 @@ def make_simulation():
         "human_perception_resource_locations",
         human_perception_resource_locations_transpiled,
     )
+    vprint(
+        f"human_perception_resource_locations_transpiled:\n'''{human_perception_resource_locations_transpiled}'''"
+    )
     human_perception_resource_locations_description.setMessageInput("resource_location")
-    human_behavior_transpiled = pyflamegpu.codegen.translate(human_behavior)
     human_perception_human_locations_transpiled = pyflamegpu.codegen.translate(
         human_perception_human_locations
     )
@@ -306,20 +331,15 @@ def make_simulation():
         "human_perception_human_locations",
         human_perception_human_locations_transpiled,
     )
+    vprint(
+        f"human_perception_human_locations_transpiled:\n'''{human_perception_human_locations_transpiled}'''"
+    )
     human_perception_human_locations_description.setMessageInput("human_location")
     # layer 3: behavior
+    human_behavior_transpiled = pyflamegpu.codegen.translate(human_behavior)
     # human_behavior_transpiled = CUDA_human_behavior
     human_behavior_description = ctx.human.newRTCFunction(
         "human_behavior", human_behavior_transpiled
-    )
-    vprint(
-        f"resource_output_location_transpiled:\n'''{resource_output_location_transpiled}'''"
-    )
-    vprint(
-        f"human_perception_resource_locations_transpiled:\n'''{human_perception_resource_locations_transpiled}'''"
-    )
-    vprint(
-        f"human_perception_human_locations_transpiled:\n'''{human_perception_human_locations_transpiled}'''"
     )
     vprint(f"human_behavior_transpiled:\n'''{human_behavior_transpiled}'''")
 

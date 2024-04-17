@@ -150,16 +150,24 @@ def test_crowding_reduces_actionpotential():
     model, simulation, ctx = make_simulation()
     humans = pyflamegpu.AgentVector(ctx.human, 12)
     for human in humans:
-        human.setVariableInt("x", 0)
-        human.setVariableInt("y", 0)
+        human.setVariableInt("x", int(C.ENV_MAX / 5))
+        human.setVariableInt("y", int(C.ENV_MAX / 5))
         human.setVariableInt("resources", 0)
         human.setVariableFloat("actionpotential", C.AP_DEFAULT)
     simulation.setPopulationData(humans)
     simulation.step()
     simulation.getPopulationData(humans)
     for human in humans:
+        assert human.getVariableInt("is_crowded") == 1
         assert math.isclose(
             human.getVariableFloat("actionpotential"),
-            C.AP_DEFAULT - C.AP_REDUCTION_BY_CROWDING,
-            rel_tol=1e-6,
-        ), "AP reduced to minimal movement by crowding"
+            C.AP_DEFAULT - C.AP_REDUCTION_BY_CROWDING - C.AP_MOVE,
+            abs_tol=1e-7,
+        ), "AP reduced & move happened"
+        assert (
+            human.getVariableInt("x") != 0 or human.getVariableInt("y") != 0
+        ), "crowded humans should random walk"
+    simulation.step()
+    simulation.getPopulationData(humans)
+    for human in humans:
+        assert human.getVariableInt("is_crowded") == 0

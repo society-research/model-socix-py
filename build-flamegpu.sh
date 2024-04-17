@@ -2,7 +2,7 @@
 set -e
 
 # FIXME: cmake should just find it..
-export PATH=/usr/local/cuda-12.2/bin:$PATH
+#export PATH=/usr/local/cuda-12.2/bin:$PATH
 # FIXME: do it inside "build-only-venv"
 python3 -m pip install --user -r build-requirements.txt
 
@@ -24,6 +24,8 @@ cmake_opts=(
   # needed for python agent_/device_function debuggin with cuda-gdb
   # see https://docs.flamegpu.com/guide/debugging-models/using-a-debugger.html#linux
   -DFLAMEGPU_RTC_EXPORT_SOURCES=ON
+  #-DCMAKE_CUDA_COMPILER=nvcc                                            
+  #-DCMAKE_CUDA_ARCHITECTURES="35;37;50;52;53;60;61;62;70;72;75;80;86"
 )
 if [[ "$no_seatbelts" != "" ]]; then
   cmake_opts+=(-DFLAMEGPU_SEATBELTS=OFF)
