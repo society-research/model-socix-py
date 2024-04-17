@@ -27,39 +27,40 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             y = 0;
         }
     };
+    auto collect_resource = [&]() {
+        auto resources = FLAMEGPU->getVariable<int>("resources");
+        resources += 1;
+        FLAMEGPU->setVariable<int>("resources", resources);
+    };
     if (FLAMEGPU->getVariable<int>("is_crowded") == 1) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
     }
-    auto can_collect_resource =
+    bool can_collect_resource =
         ap >= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
-    auto can_move = ap >= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
-    if ((!(can_move || can_collect_resource))) {
+    bool can_move = ap >= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
+    if (!(can_move || can_collect_resource)) {
         ap += FLAMEGPU->environment.getProperty<float>("AP_PER_TICK_RESTING");
     } else if ((can_move && FLAMEGPU->getVariable<int>("is_crowded") == 1)) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
         random_walk();
-        FLAMEGPU->setVariable<int>("x", x);
-        FLAMEGPU->setVariable<int>("y", y);
     } else if ((can_collect_resource &&
                 FLAMEGPU->getVariable<float>("closest_resource") <
                     FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE"))) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
-        auto resources = FLAMEGPU->getVariable<int>("resources");
-        resources += 1;
-        FLAMEGPU->setVariable<int>("resources", resources);
+        collect_resource();
     } else if ((can_move && FLAMEGPU->getVariable<float>("closest_resource") <=
                                 FLAMEGPU->environment.getProperty<float>("HUMAN_MOVE_RANGE"))) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
         auto dx = abs((x - FLAMEGPU->getVariable<float>("closest_resource_x")));
         auto dy = abs((y - FLAMEGPU->getVariable<float>("closest_resource_y")));
         if (dx > dy) {
-            auto new_x = (x + ((FLAMEGPU->getVariable<float>("closest_resource_x") - x) / dx));
-            FLAMEGPU->setVariable<int>("x", new_x);
+            x = (x + ((FLAMEGPU->getVariable<float>("closest_resource_x") - x) / dx));
         } else {
-            auto new_y = (y + ((FLAMEGPU->getVariable<float>("closest_resource_y") - y) / dy));
-            FLAMEGPU->setVariable<int>("y", new_y);
+            y = (y + ((FLAMEGPU->getVariable<float>("closest_resource_y") - y) / dy));
         }
     }
+    FLAMEGPU->setVariable<int>("x", x);
+    FLAMEGPU->setVariable<int>("y", y);
     FLAMEGPU->setVariable<float>("actionpotential", ap);
     return flamegpu::ALIVE;
 }
