@@ -28,8 +28,6 @@ C = ostruct.OpenStruct(
     # (reduced AP)
     N_HUMANS_CROWDED=10,
 )
-# 2D space bondaries
-C.ENV_MAX = 10
 # Restored AP per tick spend resting.
 C.AP_PER_TICK_RESTING = C.AP_DEFAULT / C.SLEEP_REQUIRED_PER_NIGHT
 # AP reduction caused by crowding, see @N_HUMANS_CROWDED
@@ -91,6 +89,8 @@ def human_behavior(
     message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageNone
 ):
     ap = pyflamegpu.getVariableFloat("actionpotential")
+    x = pyflamegpu.getVariableInt("x")
+    y = pyflamegpu.getVariableInt("y")
     if pyflamegpu.getVariableInt("is_crowded") == 1:
         ap -= pyflamegpu.environment.getPropertyFloat("AP_REDUCTION_BY_CROWDING")
     can_collect_resource = ap >= pyflamegpu.environment.getPropertyFloat(
@@ -102,14 +102,26 @@ def human_behavior(
     elif can_move and pyflamegpu.getVariableInt("is_crowded") == 1:
         ap -= pyflamegpu.environment.getPropertyFloat("AP_MOVE")
         d = 0
-        if pyflamegpu.random.uniformFloat() > 0.5:
+        if pyflamegpu.random.uniformInt(0, 1) == 0:
             d = 1
         else:
             d = -1
-        if pyflamegpu.random.uniformFloat() > 0.5:
-            pyflamegpu.setVariableInt("x", pyflamegpu.getVariableInt("x") + d)
+        if pyflamegpu.random.uniformInt(0, 1) == 0:
+            x += d
         else:
-            pyflamegpu.setVariableInt("y", pyflamegpu.getVariableInt("y") + d)
+            y += d
+        # wrap around
+        max = pyflamegpu.environment.getPropertyInt("GRID_SIZE")
+        if x < 0:
+            x = max
+        elif y < 0:
+            y = max
+        elif x == max:
+            x = 0
+        elif y == max:
+            y = 0
+        pyflamegpu.setVariableInt("x", x)
+        pyflamegpu.setVariableInt("y", y)
     elif can_collect_resource and pyflamegpu.getVariableFloat(
         "closest_resource"
     ) < pyflamegpu.environment.getPropertyFloat("RESOURCE_COLLECTION_RANGE"):
@@ -121,22 +133,14 @@ def human_behavior(
         "closest_resource"
     ) <= pyflamegpu.environment.getPropertyFloat("HUMAN_MOVE_RANGE"):
         ap -= pyflamegpu.environment.getPropertyFloat("AP_MOVE")
-        agent_x = pyflamegpu.getVariableInt("x")
-        agent_y = pyflamegpu.getVariableInt("y")
-        dx = math.abs(agent_x - pyflamegpu.getVariableFloat("closest_resource_x"))
-        dy = math.abs(agent_y - pyflamegpu.getVariableFloat("closest_resource_y"))
+        dx = math.abs(x - pyflamegpu.getVariableFloat("closest_resource_x"))
+        dy = math.abs(y - pyflamegpu.getVariableFloat("closest_resource_y"))
         if dx > dy:
-            x = (
-                agent_x
-                + (pyflamegpu.getVariableFloat("closest_resource_x") - agent_x) / dx
-            )
-            pyflamegpu.setVariableInt("x", x)
+            new_x = x + (pyflamegpu.getVariableFloat("closest_resource_x") - x) / dx
+            pyflamegpu.setVariableInt("x", new_x)
         else:
-            y = (
-                agent_y
-                + (pyflamegpu.getVariableFloat("closest_resource_y") - agent_y) / dy
-            )
-            pyflamegpu.setVariableInt("y", y)
+            new_y = y + (pyflamegpu.getVariableFloat("closest_resource_y") - y) / dy
+            pyflamegpu.setVariableInt("y", new_y)
     pyflamegpu.setVariableFloat("actionpotential", ap)
     return pyflamegpu.ALIVE
 
@@ -175,50 +179,6 @@ def make_resource(model):
 
 
 # debugging only
-CUDA_human_behavior = """
-FLAMEGPU_DEVICE_FUNCTION float vec2Length(int x, int y) { return sqrtf(((x * x) + (y * y))); }
-
-FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::MessageNone) {
-    auto ap = FLAMEGPU->getVariable<float>("actionpotential");
-    auto can_collect_resource =
-        ap >= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
-    auto can_move = ap >= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
-    if ((!(can_move || can_collect_resource))) {
-        FLAMEGPU->setVariable<float>(
-            "actionpotential", FLAMEGPU->environment.getProperty<float>("AP_PER_TICK_RESTING"));
-        return;
-    }
-    if ((can_collect_resource &&
-         FLAMEGPU->getVariable<float>("closest_resource") <
-             FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE"))) {
-        ap -= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
-        FLAMEGPU->setVariable<float>("actionpotential", ap);
-        auto resources = FLAMEGPU->getVariable<int>("resources");
-        resources += 1;
-        FLAMEGPU->setVariable<int>("resources", resources);
-        return;
-    }
-    if ((can_move && FLAMEGPU->getVariable<float>("closest_resource") <=
-                         FLAMEGPU->environment.getProperty<float>("HUMAN_MOVE_RANGE"))) {
-        auto agent_x = FLAMEGPU->getVariable<int>("x");
-        auto agent_y = FLAMEGPU->getVariable<int>("y");
-        auto dx = abs((agent_x - FLAMEGPU->getVariable<float>("closest_resource_x")));
-        auto dy = abs((agent_y - FLAMEGPU->getVariable<float>("closest_resource_y")));
-        if (dx > dy) {
-            auto x =
-                (agent_x + ((FLAMEGPU->getVariable<float>("closest_resource_x") - agent_x) / dx));
-            FLAMEGPU->setVariable<int>("x", x);
-        } else {
-            auto y =
-                (agent_y + ((FLAMEGPU->getVariable<float>("closest_resource_y") - agent_y) / dy));
-            FLAMEGPU->setVariable<int>("y", y);
-        }
-        ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
-        FLAMEGPU->setVariable<float>("actionpotential", ap);
-    }
-    return flamegpu::ALIVE;
-}
-"""
 CUDA_human_perception_human_locations = """
 FLAMEGPU_AGENT_FUNCTION(human_perception_human_locations, flamegpu::MessageSpatial2D,
                         flamegpu::MessageNone) {
@@ -254,7 +214,7 @@ def vprint(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def make_simulation():
+def make_simulation(grid_size=10):
     ctx = ostruct.OpenStruct()
     model = pyflamegpu.ModelDescription("test_human_behavior")
     env = model.Environment()
@@ -270,13 +230,14 @@ def make_simulation():
             env.newPropertyInt(key, val)
         else:
             raise RuntimeError("unknown environment variable type")
+    env.newPropertyInt("GRID_SIZE", grid_size)
 
     def make_location_message(model, name):
         message = model.newMessageSpatial2D(name)
         # XXX: setRadius: if not divided by 2, messages wrap around the borders and occur multiple times
-        message.setRadius(C.ENV_MAX / 2)
+        message.setRadius(grid_size / 2)
         message.setMin(0, 0)
-        message.setMax(C.ENV_MAX, C.ENV_MAX)
+        message.setMax(grid_size, grid_size)
         message.newVariableID("id")
 
     make_location_message(model, "resource_location")
@@ -337,6 +298,8 @@ def make_simulation():
     human_perception_human_locations_description.setMessageInput("human_location")
     # layer 3: behavior
     human_behavior_transpiled = pyflamegpu.codegen.translate(human_behavior)
+    with open("agent_fn/human_behavior.cu") as fd:
+        CUDA_human_behavior = fd.read()
     # human_behavior_transpiled = CUDA_human_behavior
     human_behavior_description = ctx.human.newRTCFunction(
         "human_behavior", human_behavior_transpiled
@@ -368,7 +331,8 @@ def make_simulation():
 
 
 def main():
-    model, simulation, ctx = make_simulation()
+    env_max = 100
+    model, simulation, ctx = make_simulation(grid_size=env_max)
 
     vprint("starting with:", sys.argv)
     simulation.initialise(sys.argv)
@@ -377,8 +341,8 @@ def main():
         random.seed(simulation.SimulationConfig().random_seed)
         humans = pyflamegpu.AgentVector(ctx.human, C.AGENT_COUNT)
         for h in humans:
-            h.setVariableInt("x", int(random.uniform(0, C.ENV_MAX)))
-            h.setVariableInt("y", int(random.uniform(0, C.ENV_MAX)))
+            h.setVariableInt("x", int(random.uniform(0, env_max)))
+            h.setVariableInt("y", int(random.uniform(0, env_max)))
         simulation.setPopulationData(humans)
     simulation.simulate()
     pyflamegpu.cleanup()  # Ensure profiling / memcheck work correctly
