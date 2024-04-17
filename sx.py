@@ -178,37 +178,6 @@ def make_resource(model):
     return resource
 
 
-# debugging only
-CUDA_human_perception_human_locations = """
-FLAMEGPU_AGENT_FUNCTION(human_perception_human_locations, flamegpu::MessageSpatial2D,
-                        flamegpu::MessageNone) {
-    auto id = FLAMEGPU->getID();
-    auto human_x = FLAMEGPU->getVariable<int>("x");
-    auto human_y = FLAMEGPU->getVariable<int>("y");
-    auto close_humans = 0;
-    for (const auto &human : FLAMEGPU->message_in.wrap(human_x, human_y)) {
-        if (human.getVariable<int>("id") == id) {
-            continue;
-        }
-        printf("human[%02d] found human[%02d]\\n", id, human.getVariable<int>("id"));
-        auto other_human_x = human.getVariable<int>("x");
-        auto other_human_y = human.getVariable<int>("y");
-        if ((human_x == other_human_x && human_y == other_human_y)) {
-            close_humans += 1;
-        }
-    }
-    printf("found %d close humans, >= %u\\n", close_humans,
-           FLAMEGPU->environment.getProperty<int>("N_HUMANS_CROWDED"));
-    if (close_humans >= FLAMEGPU->environment.getProperty<int>("N_HUMANS_CROWDED")) {
-        auto ap = FLAMEGPU->getVariable<float>("actionpotential");
-        ap -= FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
-        printf("ap = %f\\n", ap);
-        FLAMEGPU->setVariable<float>("actionpotential", ap);
-    }
-}
-"""
-
-
 def vprint(*args, **kwargs):
     if "-v" in sys.argv:
         print(*args, **kwargs)
@@ -245,66 +214,48 @@ def make_simulation(grid_size=10):
     ctx.human = make_human(model)
     ctx.resource = make_resource(model)
 
-    def make_agent_function(name, py_fn=None, cuda_fn=None):
+    def make_agent_function(agent, name, py_fn=None, cuda_fn=None, cuda_fn_file=None):
         "Either `py_fn` or `cuda_fn` must be passed"
-        if py_fn is not None and cuda_fn is not None:
-            raise RuntimeError(
-                "either pass `py_fn` python function or `cuda_fn` cuda function"
-            )
+        if sum([1 for i in [py_fn, cuda_fn, cuda_fn_file] if i]) > 1:
+            raise RuntimeError("use one argument only to pass the agent function")
+        if cuda_fn_file is not None:
+            with open(cuda_fn_file) as fd:
+                cuda_fn = fd.read()
         if py_fn is not None:
             cuda_fn = pyflamegpu.codegen.translate(py_fn)
-        description = ctx.resource.newRTCFunction(cuda_fn)
-        printv(f"{name}: '''\n{cuda_fn}'''")
+        description = agent.newRTCFunction(name, cuda_fn)
+        vprint(f"{name}: '''\n{cuda_fn}'''")
         return description
 
     # layer 1: location message output
-    resource_output_location_transpiled = pyflamegpu.codegen.translate(output_location)
-    resource_output_location_description = ctx.resource.newRTCFunction(
-        "ouput_location", resource_output_location_transpiled
-    )
-    vprint(
-        f"resource_output_location_transpiled:\n'''{resource_output_location_transpiled}'''"
+    resource_output_location_description = make_agent_function(
+        ctx.resource, "output_location", py_fn=output_location
     )
     resource_output_location_description.setMessageOutput("resource_location")
-
-    human_output_location_transpiled = pyflamegpu.codegen.translate(output_location)
-    human_output_location_description = ctx.human.newRTCFunction(
-        "ouput_location", human_output_location_transpiled
+    human_output_location_description = make_agent_function(
+        ctx.human, "output_location", py_fn=output_location
     )
     human_output_location_description.setMessageOutput("human_location")
     # layer 2: perception
-    human_perception_resource_locations_transpiled = pyflamegpu.codegen.translate(
-        human_perception_resource_locations
-    )
-    human_perception_resource_locations_description = ctx.human.newRTCFunction(
+    human_perception_resource_locations_description = make_agent_function(
+        ctx.human,
         "human_perception_resource_locations",
-        human_perception_resource_locations_transpiled,
-    )
-    vprint(
-        f"human_perception_resource_locations_transpiled:\n'''{human_perception_resource_locations_transpiled}'''"
+        py_fn=human_perception_resource_locations,
     )
     human_perception_resource_locations_description.setMessageInput("resource_location")
-    human_perception_human_locations_transpiled = pyflamegpu.codegen.translate(
-        human_perception_human_locations
-    )
-    # human_perception_human_locations_transpiled = CUDA_human_perception_human_locations
-    human_perception_human_locations_description = ctx.human.newRTCFunction(
+    human_perception_human_locations_description = make_agent_function(
+        ctx.human,
         "human_perception_human_locations",
-        human_perception_human_locations_transpiled,
-    )
-    vprint(
-        f"human_perception_human_locations_transpiled:\n'''{human_perception_human_locations_transpiled}'''"
+        py_fn=human_perception_human_locations,
     )
     human_perception_human_locations_description.setMessageInput("human_location")
     # layer 3: behavior
-    human_behavior_transpiled = pyflamegpu.codegen.translate(human_behavior)
-    with open("agent_fn/human_behavior.cu") as fd:
-        CUDA_human_behavior = fd.read()
-    # human_behavior_transpiled = CUDA_human_behavior
-    human_behavior_description = ctx.human.newRTCFunction(
-        "human_behavior", human_behavior_transpiled
+    human_behavior_description = make_agent_function(
+        ctx.human,
+        "human_behavior",
+        #py_fn=human_behavior,
+        cuda_fn_file="agent_fn/human_behavior.cu"
     )
-    vprint(f"human_behavior_transpiled:\n'''{human_behavior_transpiled}'''")
 
     # Identify the root of execution
     # model.addExecutionRoot(resource_output_location_description)

@@ -4,16 +4,7 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     auto ap = FLAMEGPU->getVariable<float>("actionpotential");
     auto x = FLAMEGPU->getVariable<int>("x");
     auto y = FLAMEGPU->getVariable<int>("y");
-    if (FLAMEGPU->getVariable<int>("is_crowded") == 1) {
-        ap -= FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
-    }
-    auto can_collect_resource =
-        ap >= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
-    auto can_move = ap >= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
-    if ((!(can_move || can_collect_resource))) {
-        ap += FLAMEGPU->environment.getProperty<float>("AP_PER_TICK_RESTING");
-    } else if ((can_move && FLAMEGPU->getVariable<int>("is_crowded") == 1)) {
-        ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
+    auto random_walk = [&]() {
         auto d = 0;
         if (FLAMEGPU->random.uniform<int>(0, 1) == 0) {
             d = 1;
@@ -35,6 +26,18 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
         } else if (y == max) {
             y = 0;
         }
+    };
+    if (FLAMEGPU->getVariable<int>("is_crowded") == 1) {
+        ap -= FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
+    }
+    auto can_collect_resource =
+        ap >= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
+    auto can_move = ap >= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
+    if ((!(can_move || can_collect_resource))) {
+        ap += FLAMEGPU->environment.getProperty<float>("AP_PER_TICK_RESTING");
+    } else if ((can_move && FLAMEGPU->getVariable<int>("is_crowded") == 1)) {
+        ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
+        random_walk();
         FLAMEGPU->setVariable<int>("x", x);
         FLAMEGPU->setVariable<int>("y", y);
     } else if ((can_collect_resource &&

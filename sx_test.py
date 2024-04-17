@@ -148,6 +148,8 @@ def test_recover_actionpotential_by_sleeping():
 
 def test_crowding_reduces_actionpotential():
     model, simulation, ctx = make_simulation()
+    # required to seed, since this test uses random-walk
+    simulation.SimulationConfig().random_seed = 0
     humans = pyflamegpu.AgentVector(ctx.human, 12)
     for human in humans:
         human.setVariableInt("x", 0)
@@ -173,7 +175,7 @@ def test_crowding_reduces_actionpotential():
         assert human.getVariableInt("is_crowded") == 0
 
 
-#def test_movement_around_2d_grid_boundaries():
+# def test_movement_around_2d_grid_boundaries():
 #    model, simulation, ctx = make_simulation()
 #    humans = pyflamegpu.AgentVector(ctx.human, 1)
 #    humans[0].setVariableInt("x", 0)
@@ -183,7 +185,7 @@ def test_crowding_reduces_actionpotential():
 #    simulation.getPopulationData(humans)
 
 
-#def test_crowding_should_resolve():
+# def test_crowding_should_resolve():
 #    model, simulation, ctx = make_simulation(grid_size=100)
 #    humans = pyflamegpu.AgentVector(ctx.human, 100)
 #    for human in humans:
