@@ -61,6 +61,7 @@ def human_perception_resource_locations(
     pyflamegpu.setVariableFloat("closest_resource", closest_resource)
     pyflamegpu.setVariableFloat("closest_resource_x", closest_resource_x)
     pyflamegpu.setVariableFloat("closest_resource_y", closest_resource_y)
+    return pyflamegpu.ALIVE
 
 
 @pyflamegpu.agent_function

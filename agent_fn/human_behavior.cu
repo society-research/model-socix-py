@@ -1,4 +1,23 @@
+#include <type_traits>
+#include <nvfunctional>
+//#include <functional>
+
 FLAMEGPU_DEVICE_FUNCTION float vec2Length(int x, int y) { return sqrtf(((x * x) + (y * y))); }
+
+//class Action {
+//  public:
+//    // nvstd::function<void()> action;
+//    Action(std::string action, float score) {
+//        this->action = action;
+//        this->score = score;
+//    }
+//    std::string action;
+//    float score;
+//};
+struct Action {
+  char id[10];
+  float score;
+};
 
 FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::MessageNone) {
     auto ap = FLAMEGPU->getVariable<float>("actionpotential");
@@ -27,6 +46,12 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             y = 0;
         }
     };
+    Action actions[] = {
+      {"ok", 0}
+    };
+    //Action actions[] = {
+    //    Action("ok", 0),
+    //};
     auto collect_resource = [&]() {
         auto resources = FLAMEGPU->getVariable<int>("resources");
         resources += 1;
