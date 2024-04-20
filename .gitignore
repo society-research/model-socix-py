@@ -3,3 +3,4 @@
 *.vim
 __pycache__/
 venv/
+build-venv/

@@ -184,9 +184,11 @@ def vprint(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def make_simulation(grid_size=10):
+def make_simulation(
+    grid_size=10,
+) -> [pyflamegpu.ModelDescription, pyflamegpu.CUDASimulation, ostruct.OpenStruct]:
     ctx = ostruct.OpenStruct()
-    model = pyflamegpu.ModelDescription("test_human_behavior")
+    model = pyflamegpu.ModelDescription("socix")
     env = model.Environment()
     for key in C:
         if key[0] == "_":
@@ -254,8 +256,8 @@ def make_simulation(grid_size=10):
     human_behavior_description = make_agent_function(
         ctx.human,
         "human_behavior",
-        #py_fn=human_behavior,
-        cuda_fn_file="agent_fn/human_behavior.cu"
+        # py_fn=human_behavior,
+        cuda_fn_file="agent_fn/human_behavior.cu",
     )
 
     # Identify the root of execution

@@ -1,22 +1,16 @@
-#include <type_traits>
-#include <nvfunctional>
-//#include <functional>
+#include "agent_fn/function.cuh"
 
 FLAMEGPU_DEVICE_FUNCTION float vec2Length(int x, int y) { return sqrtf(((x * x) + (y * y))); }
 
-//class Action {
-//  public:
-//    // nvstd::function<void()> action;
-//    Action(std::string action, float score) {
-//        this->action = action;
-//        this->score = score;
-//    }
-//    std::string action;
-//    float score;
-//};
-struct Action {
-  char id[10];
-  float score;
+// not possible to include nvstd::function header, see
+// https://github.com/FLAMEGPU/FLAMEGPU2/discussions/1199#discussioncomment-9146551
+enum class Action {
+    RANDOM_WALK = 1,
+};
+
+struct ScoredAction {
+    Action action;
+    int score;
 };
 
 FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::MessageNone) {
@@ -46,16 +40,14 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             y = 0;
         }
     };
-    Action actions[] = {
-      {"ok", 0}
-    };
-    //Action actions[] = {
-    //    Action("ok", 0),
-    //};
     auto collect_resource = [&]() {
         auto resources = FLAMEGPU->getVariable<int>("resources");
         resources += 1;
         FLAMEGPU->setVariable<int>("resources", resources);
+    };
+    // XXX: unused right now -- will be used for GOAP-algorithm
+    ScoredAction actions[] = {
+        {Action::RANDOM_WALK, 0},
     };
     if (FLAMEGPU->getVariable<int>("is_crowded") == 1) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
