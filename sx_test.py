@@ -17,7 +17,10 @@ def test_collect_resource_no_resource_available():
     assert humans.size() == 1
     assert humans[0].getVariableInt("x") == 0
     assert humans[0].getVariableInt("y") == 0
-    assert humans[0].getVariableFloat("actionpotential") == C.AP_DEFAULT
+    assert (
+        humans[0].getVariableFloat("actionpotential")
+        == C.AP_DEFAULT + C.AP_PER_TICK_RESTING
+    ), "nothing todo, so human should rest"
     assert (
         humans[0].getVariableInt("resources") == 1
     ), "no resource available to collect"

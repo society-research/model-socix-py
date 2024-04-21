@@ -1,23 +1,30 @@
 #include "agent_fn/function.cuh"
 
 FLAMEGPU_DEVICE_FUNCTION float vec2Length(int x, int y) { return sqrtf(((x * x) + (y * y))); }
+FLAMEGPU_DEVICE_FUNCTION int findMax(int ar[], int len) {
+    int max_index = len;
+    int max = 0;
+    for (int i = 0; i < len; i++) {
+        // printf("[%02d] score[%d]=%d\n", FLAMEGPU->getID(), i, scores[i]);
+        if (ar[i] > max) {
+            max = ar[i];
+            max_index = i;
+        }
+    }
+    return max_index;
+}
 
 // not possible to include nvstd::function header, see
 // https://github.com/FLAMEGPU/FLAMEGPU2/discussions/1199#discussioncomment-9146551
-enum class Action : int {
+namespace Action {
+enum Action {
     RandomWalk = 0,
     Rest = 1,
     CollectResource = 2,
     MoveToClosestResource = 3,
     EOF = 4,
 };
-
-struct ScoredAction {
-    Action action;
-    int score;
-};
-
-constexpr int NOT_POSSIBLE = 0;
+}
 
 FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::MessageNone) {
     auto ap = FLAMEGPU->getVariable<float>("actionpotential");
@@ -65,37 +72,53 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     };
     auto rest = [&]() {
         ap += FLAMEGPU->environment.getProperty<float>("AP_PER_TICK_RESTING");
-        if (FLAMEGPU->getVariable<int>("is_crowded") ==
-            1) { // FIXME(goap): only reduce AP by crowding when not resting
+        if (FLAMEGPU->getVariable<int>("is_crowded") == 1) {
+            // remove the AP reduction by crowding in case of resting
             ap += FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
         }
     };
-    {
-        if (FLAMEGPU->getVariable<int>("is_crowded") == 1) {
-            ap -= FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
-        }
+    if (FLAMEGPU->getVariable<int>("is_crowded") == 1) {
+        ap -= FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
     }
-    // XXX: unused right now -- will be used for GOAP-algorithm
     int scores[int(Action::EOF)];
     memset(&scores, 0, int(Action::EOF) * sizeof(int));
+    scores[int(Action::Rest)] = 1;
     bool can_collect_resource =
         ap >= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
     bool can_move = ap >= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
     if (!(can_move || can_collect_resource)) {
-        scores[int(Action::Rest)] = 10;
-        rest();
-    } else if ((can_move && FLAMEGPU->getVariable<int>("is_crowded") == 1)) {
+        scores[int(Action::Rest)] = 5;
+    }
+    if ((can_move && FLAMEGPU->getVariable<int>("is_crowded") == 1)) {
         scores[int(Action::RandomWalk)] = 10;
-        random_walk();
-    } else if ((can_collect_resource &&
-                FLAMEGPU->getVariable<float>("closest_resource") <
-                    FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE"))) {
+    }
+    if ((can_collect_resource &&
+         FLAMEGPU->getVariable<float>("closest_resource") <
+             FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE"))) {
         scores[int(Action::CollectResource)] = 10;
-        collect_resource();
-    } else if ((can_move && FLAMEGPU->getVariable<float>("closest_resource") <=
-                                FLAMEGPU->environment.getProperty<float>("HUMAN_MOVE_RANGE"))) {
+    }
+    if ((can_move && FLAMEGPU->getVariable<float>("closest_resource") <=
+                         FLAMEGPU->environment.getProperty<float>("HUMAN_MOVE_RANGE"))) {
         scores[int(Action::MoveToClosestResource)] = 10;
+    }
+    int selected_action = findMax(scores, Action::EOF);
+    switch (selected_action) {
+    case Action::RandomWalk:
+        random_walk();
+        break;
+    case Action::Rest:
+        rest();
+        break;
+    case Action::CollectResource:
+        collect_resource();
+        break;
+    case Action::MoveToClosestResource:
         move_to_closest_resource();
+        break;
+    case Action::EOF:
+    default:
+        printf("[BUG] must not happen\n");
+        break;
     }
     FLAMEGPU->setVariable<int>("x", x);
     FLAMEGPU->setVariable<int>("y", y);
