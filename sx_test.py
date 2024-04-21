@@ -60,7 +60,7 @@ def test_move_towards_resource_1d():
     humans[0].setVariableFloat("actionpotential", C.AP_DEFAULT)
     resources = pyflamegpu.AgentVector(ctx.resource, 1)
     resources[0].setVariableInt("x", 0)
-    resources[0].setVariableInt("y", 4)
+    resources[0].setVariableInt("y", 5)
     simulation.setPopulationData(resources)
     simulation.setPopulationData(humans)
     simulation.step()

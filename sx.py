@@ -14,8 +14,6 @@ def sqbrt(x):
 C = ostruct.OpenStruct(
     AGENT_COUNT=64,
     RESOURCE_COLLECTION_RANGE=3.0,
-    # TODO: can be removed, right?!
-    HUMAN_MOVE_RANGE=10.0,
     # default amount of action potential (AP)
     AP_DEFAULT=1.0,
     # AP needed to collect a resource
@@ -27,6 +25,9 @@ C = ostruct.OpenStruct(
     # amount of humans in a single tile, after which humans feel crowded
     # (reduced AP)
     N_HUMANS_CROWDED=10,
+    # distance * SCORE_REDUCTION_PER_TILE_DISTANCE is subtracted from the score
+    # calculation when a human agent tries to evaluate its actions
+    SCORE_REDUCTION_PER_TILE_DISTANCE=0.1,
 )
 # Restored AP per tick spend resting.
 C.AP_PER_TICK_RESTING = C.AP_DEFAULT / C.SLEEP_REQUIRED_PER_NIGHT
