@@ -80,6 +80,12 @@ def human_perception_human_locations(
         if human_x == other_human_x and human_y == other_human_y:
             close_humans += 1
     if close_humans >= pyflamegpu.environment.getPropertyInt("N_HUMANS_CROWDED"):
+        # happens in agent_fn/human_behavior.cu
+        # pyflamegpu.setVariableInt(
+        #    "actionpotential",
+        #    pyflamegpu.getVariableInt("actionpotential")
+        #    - pyflamegpu.environment.getPropertyInt("AP_REDUCTION_BY_CROWDING"),
+        # )
         pyflamegpu.setVariableInt("is_crowded", 1)
     else:
         pyflamegpu.setVariableInt("is_crowded", 0)
