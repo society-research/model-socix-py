@@ -57,6 +57,10 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     bool can_move = ap >= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
     if (!(can_move || can_collect_resource)) {
         ap += FLAMEGPU->environment.getProperty<float>("AP_PER_TICK_RESTING");
+        if (FLAMEGPU->getVariable<int>("is_crowded") ==
+            1) { // FIXME(goap): only reduce AP by crowding when not resting
+            ap += FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
+        }
     } else if ((can_move && FLAMEGPU->getVariable<int>("is_crowded") == 1)) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
         random_walk();

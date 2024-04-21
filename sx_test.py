@@ -175,6 +175,27 @@ def test_crowding_reduces_actionpotential():
         assert human.getVariableInt("is_crowded") == 0
 
 
+def test_crowding_should_resolve():
+    model, simulation, ctx = make_simulation(grid_size=100)
+    # required to seed, since this test uses random-walk
+    simulation.SimulationConfig().random_seed = 2
+    humans = pyflamegpu.AgentVector(ctx.human, 100)
+    for human in humans:
+        human.setVariableInt("x", 5)
+        human.setVariableInt("y", 5)
+    simulation.setPopulationData(humans)
+    for _ in range(10):
+        simulation.step()
+    simulation.getPopulationData(humans)
+    crowded = 0
+    for human in humans:
+        # print(
+        #     f"human[{human.getID()}], at=[{human.getVariableInt('x')}, {human.getVariableInt('y')}], ap={human.getVariableFloat('actionpotential')}"
+        # )
+        crowded += human.getVariableInt("is_crowded")
+    assert crowded <= 15, "<= 15% should be crowded after 10 steps"
+
+
 # def test_movement_around_2d_grid_boundaries():
 #    model, simulation, ctx = make_simulation()
 #    humans = pyflamegpu.AgentVector(ctx.human, 1)
@@ -183,19 +204,3 @@ def test_crowding_reduces_actionpotential():
 #    simulation.setPopulationData(humans)
 #    simulation.step()
 #    simulation.getPopulationData(humans)
-
-
-# def test_crowding_should_resolve():
-#    model, simulation, ctx = make_simulation(grid_size=100)
-#    humans = pyflamegpu.AgentVector(ctx.human, 100)
-#    for human in humans:
-#        human.setVariableInt("x", 5)
-#        human.setVariableInt("y", 5)
-#    simulation.setPopulationData(humans)
-#    for _ in range(20):
-#        simulation.step()
-#    simulation.getPopulationData(humans)
-#    crowded = 0
-#    for human in humans:
-#        crowded += human.getVariableInt("is_crowded")
-#    assert crowded <= 10, "< 10% should be crowded"

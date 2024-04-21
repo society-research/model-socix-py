@@ -32,7 +32,7 @@ C = ostruct.OpenStruct(
 C.AP_PER_TICK_RESTING = C.AP_DEFAULT / C.SLEEP_REQUIRED_PER_NIGHT
 # AP reduction caused by crowding, see @N_HUMANS_CROWDED
 # Note: humans should be able to move, even with reduced AP by crowding
-C.AP_REDUCTION_BY_CROWDING = C.AP_DEFAULT - C.AP_MOVE
+C.AP_REDUCTION_BY_CROWDING = C.AP_DEFAULT / 10
 
 
 @pyflamegpu.device_function
