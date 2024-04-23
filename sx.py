@@ -28,7 +28,15 @@ C = ostruct.OpenStruct(
     # distance * SCORE_REDUCTION_PER_TILE_DISTANCE is subtracted from the score
     # calculation when a human agent tries to evaluate its actions
     SCORE_REDUCTION_PER_TILE_DISTANCE=0.1,
+    # increase in hunger per tick
+    HUNGER_PER_TICK=1,
+    # amount of hunger a single consumed resource restores
+    HUNGER_PER_RESOURCE_CONSUMPTION=8,
+    # amount of hunger when a human starves to death
+    HUNGER_STARVED_TO_DEATH=30,
 )
+# after this amount of hunger a human chooses to eat if possible
+C.HUNGER_TO_TRIGGER_CONSUMPTION = C.HUNGER_PER_RESOURCE_CONSUMPTION
 # Restored AP per tick spend resting.
 C.AP_PER_TICK_RESTING = C.AP_DEFAULT / C.SLEEP_REQUIRED_PER_NIGHT
 # AP reduction caused by crowding, see @N_HUMANS_CROWDED
@@ -39,6 +47,27 @@ C.AP_REDUCTION_BY_CROWDING = C.AP_DEFAULT / 10
 @pyflamegpu.device_function
 def vec2Length(x: int, y: int) -> float:
     return math.sqrtf(x * x + y * y)
+
+
+# TODO: remove
+@pyflamegpu.agent_function
+def human_perception(
+    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageNone
+):
+    """Humans may die here."""
+    hunger = pyflamegpu.getVariableInt("hunger")
+    resources = pyflamegpu.getVariableInt("resources")
+    hunger += pyflamegpu.environment.getPropertyInt("HUNGER_PER_TICK")
+    if resources != 0:
+        resources -= 1
+        hunger -= pyflamegpu.environment.getPropertyInt(
+            "HUNGER_PER_RESOURCE_CONSUMPTION"
+        )
+    if hunger >= pyflamegpu.environment.getPropertyInt("HUNGER_STARVED_TO_DEATH"):
+        return pyflamegpu.DEAD
+    pyflamegpu.setVariableInt("hunger", hunger)
+    pyflamegpu.setVariableInt("resources", resources)
+    return pyflamegpu.ALIVE
 
 
 @pyflamegpu.agent_function
@@ -62,7 +91,6 @@ def human_perception_resource_locations(
     pyflamegpu.setVariableFloat("closest_resource", closest_resource)
     pyflamegpu.setVariableFloat("closest_resource_x", closest_resource_x)
     pyflamegpu.setVariableFloat("closest_resource_y", closest_resource_y)
-    return pyflamegpu.ALIVE
 
 
 @pyflamegpu.agent_function
@@ -93,74 +121,12 @@ def human_perception_human_locations(
 
 
 @pyflamegpu.agent_function
-def human_behavior(
-    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageNone
-):
-    ap = pyflamegpu.getVariableFloat("actionpotential")
-    x = pyflamegpu.getVariableInt("x")
-    y = pyflamegpu.getVariableInt("y")
-    if pyflamegpu.getVariableInt("is_crowded") == 1:
-        ap -= pyflamegpu.environment.getPropertyFloat("AP_REDUCTION_BY_CROWDING")
-    can_collect_resource = ap >= pyflamegpu.environment.getPropertyFloat(
-        "AP_COLLECT_RESOURCE"
-    )
-    can_move = ap >= pyflamegpu.environment.getPropertyFloat("AP_MOVE")
-    if not (can_move or can_collect_resource):
-        ap += pyflamegpu.environment.getPropertyFloat("AP_PER_TICK_RESTING")
-    elif can_move and pyflamegpu.getVariableInt("is_crowded") == 1:
-        ap -= pyflamegpu.environment.getPropertyFloat("AP_MOVE")
-        d = 0
-        if pyflamegpu.random.uniformInt(0, 1) == 0:
-            d = 1
-        else:
-            d = -1
-        if pyflamegpu.random.uniformInt(0, 1) == 0:
-            x += d
-        else:
-            y += d
-        # wrap around
-        max = pyflamegpu.environment.getPropertyInt("GRID_SIZE")
-        if x < 0:
-            x = max
-        elif y < 0:
-            y = max
-        elif x == max:
-            x = 0
-        elif y == max:
-            y = 0
-        pyflamegpu.setVariableInt("x", x)
-        pyflamegpu.setVariableInt("y", y)
-    elif can_collect_resource and pyflamegpu.getVariableFloat(
-        "closest_resource"
-    ) < pyflamegpu.environment.getPropertyFloat("RESOURCE_COLLECTION_RANGE"):
-        ap -= pyflamegpu.environment.getPropertyFloat("AP_COLLECT_RESOURCE")
-        resources = pyflamegpu.getVariableInt("resources")
-        resources += 1
-        pyflamegpu.setVariableInt("resources", resources)
-    elif can_move and pyflamegpu.getVariableFloat(
-        "closest_resource"
-    ) <= pyflamegpu.environment.getPropertyFloat("HUMAN_MOVE_RANGE"):
-        ap -= pyflamegpu.environment.getPropertyFloat("AP_MOVE")
-        dx = math.abs(x - pyflamegpu.getVariableFloat("closest_resource_x"))
-        dy = math.abs(y - pyflamegpu.getVariableFloat("closest_resource_y"))
-        if dx > dy:
-            new_x = x + (pyflamegpu.getVariableFloat("closest_resource_x") - x) / dx
-            pyflamegpu.setVariableInt("x", new_x)
-        else:
-            new_y = y + (pyflamegpu.getVariableFloat("closest_resource_y") - y) / dy
-            pyflamegpu.setVariableInt("y", new_y)
-    pyflamegpu.setVariableFloat("actionpotential", ap)
-    return pyflamegpu.ALIVE
-
-
-@pyflamegpu.agent_function
 def output_location(
     message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageSpatial2D
 ):
     message_out.setVariableInt("id", pyflamegpu.getID())
     message_out.setVariableInt("x", pyflamegpu.getVariableInt("x"))
     message_out.setVariableInt("y", pyflamegpu.getVariableInt("y"))
-    return pyflamegpu.ALIVE
 
 
 def make_human(model):
@@ -170,6 +136,7 @@ def make_human(model):
     human.newVariableInt("y")
     human.newVariableInt("resources")
     human.newVariableFloat("actionpotential")
+    human.newVariableInt("hunger")
     # passing data between agent_functions
     human.newVariableFloat("closest_resource")
     human.newVariableFloat("closest_resource_x")
@@ -263,19 +230,18 @@ def make_simulation(
     human_behavior_description = make_agent_function(
         ctx.human,
         "human_behavior",
-        # py_fn=human_behavior,
         cuda_fn_file="agent_fn/human_behavior.cu",
     )
+    human_behavior_description.setAllowAgentDeath(True)
 
     # Identify the root of execution
     # model.addExecutionRoot(resource_output_location_description)
     l1 = model.newLayer("layer 1: location message output")
     l1.addAgentFunction(resource_output_location_description)
     l1.addAgentFunction(human_output_location_description)
-    l2 = model.newLayer("layer 2: perception")
+    l2 = model.newLayer("layer 2.0: perception: resources")
     l2.addAgentFunction(human_perception_resource_locations_description)
-    # FIXME: this should also be layer 2 function, but gives an error when added there
-    model.newLayer("layer 2.1: FIXME").addAgentFunction(
+    model.newLayer("layer 2.1: perception: humans").addAgentFunction(
         human_perception_human_locations_description
     )
     model.newLayer("layer 3: behavior").addAgentFunction(human_behavior_description)

@@ -199,6 +199,24 @@ def test_crowding_should_resolve():
     assert crowded <= 15, "<= 15% should be crowded after 10 steps"
 
 
+def test_starve_without_resources():
+    model, simulation, ctx = make_simulation(grid_size=100)
+    humans = pyflamegpu.AgentVector(ctx.human, 1)
+    humans[0].setVariableInt("x", 0)
+    humans[0].setVariableInt("y", 0)
+    humans[0].setVariableInt("resources", 0)
+    humans[0].setVariableFloat("actionpotential", 0)
+    simulation.setPopulationData(humans)
+    for _ in range(C.HUNGER_STARVED_TO_DEATH + 1):
+        simulation.step()
+    simulation.getPopulationData(humans)
+    assert len(humans) == 0
+
+
+# def test_require_2_different_resources_for_survival():
+#     pass
+
+
 # def test_movement_around_2d_grid_boundaries():
 #    model, simulation, ctx = make_simulation()
 #    humans = pyflamegpu.AgentVector(ctx.human, 1)

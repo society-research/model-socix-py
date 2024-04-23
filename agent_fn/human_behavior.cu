@@ -50,6 +50,9 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     float ap = FLAMEGPU->getVariable<float>("actionpotential");
     int x = FLAMEGPU->getVariable<int>("x");
     int y = FLAMEGPU->getVariable<int>("y");
+    int hunger = FLAMEGPU->getVariable<int>("hunger");
+    int resources = FLAMEGPU->getVariable<int>("resources");
+
     auto random_walk = [&]() {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
         int d = 0;
@@ -76,9 +79,7 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     };
     auto collect_resource = [&]() {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
-        int resources = FLAMEGPU->getVariable<int>("resources");
         resources += 1;
-        FLAMEGPU->setVariable<int>("resources", resources);
     };
     auto move_to_closest_resource = [&]() {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
@@ -97,8 +98,22 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             ap += FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
         }
     };
-    if (FLAMEGPU->getVariable<int>("is_crowded") == 1) {
-        ap -= FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
+    {
+        // changes due to self-perception
+        if (FLAMEGPU->getVariable<int>("is_crowded") == 1) {
+            ap -= FLAMEGPU->environment.getProperty<float>("AP_REDUCTION_BY_CROWDING");
+        }
+        hunger += FLAMEGPU->environment.getProperty<int>("HUNGER_PER_TICK");
+        if (hunger >= FLAMEGPU->environment.getProperty<int>("HUNGER_STARVED_TO_DEATH")) {
+            return flamegpu::DEAD;
+        }
+        // XXX: strictly speaking food consumption is behavior and should be
+        // scored below before executed
+        if (resources != 0 &&
+            hunger > FLAMEGPU->environment.getProperty<int>("HUNGER_TO_TRIGGER_CONSUMPTION")) {
+            resources -= 1;
+            hunger -= FLAMEGPU->environment.getProperty<int>("HUNGER_PER_RESOURCE_CONSUMPTION");
+        }
     }
     int scores[Action::EOF];
     memset(&scores, 0, Action::EOF * sizeof(int));
@@ -146,5 +161,8 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     FLAMEGPU->setVariable<int>("x", x);
     FLAMEGPU->setVariable<int>("y", y);
     FLAMEGPU->setVariable<float>("actionpotential", ap);
+    FLAMEGPU->setVariable<int>("hunger", hunger);
+    FLAMEGPU->setVariable<int>("resources", resources);
+
     return flamegpu::ALIVE;
 }
