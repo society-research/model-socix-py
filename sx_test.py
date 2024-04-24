@@ -223,17 +223,30 @@ def test_starve_without_resources():
     assert len(humans) == 0
 
 
-# def test_require_2_different_resources_for_survival():
-#    model, simulation, ctx = make_simulation(grid_size=100)
-#    humans = pyflamegpu.AgentVector(ctx.human, 1)
-#    humans[0].setVariableInt("x", 0)
-#    humans[0].setVariableInt("y", 0)
-#    humans[0].setVariableArrayInt("resources", (0, 0))
-#    humans[0].setVariableFloat("actionpotential", C.AP_DEFAULT)
-#    simulation.setPopulationData(humans)
-#    simulation.step()
-#    simulation.getPopulationData(humans)
-#    assert humans[0].getVariableInt('x')
+def test_require_2_different_resources_for_survival():  # TODO
+    pass
+
+
+def DISABLED_test_move_towards_2nd_resource_to_stay_alive():
+    model, simulation, ctx = make_simulation(grid_size=100)
+    humans = pyflamegpu.AgentVector(ctx.human, 1)
+    humans[0].setVariableInt("x", 0)
+    humans[0].setVariableInt("y", 0)
+    humans[0].setVariableArrayInt("resources", (10, 0))
+    humans[0].setVariableFloat("actionpotential", C.AP_DEFAULT)
+    resources = pyflamegpu.AgentVector(ctx.resource, 2)
+    resources[0].setVariableInt("x", 0)
+    resources[0].setVariableInt("y", 0)
+    resources[0].setVariableInt("type", 0)
+    resources[1].setVariableInt("x", 0)
+    resources[1].setVariableInt("y", 4)
+    resources[1].setVariableInt("type", 1)
+    simulation.setPopulationData(resources)
+    simulation.setPopulationData(humans)
+    simulation.step()
+    simulation.getPopulationData(humans)
+    assert humans[0].getVariableInt("x") == 0
+    assert humans[0].getVariableInt("y") == 1
 
 
 # def test_movement_around_2d_grid_boundaries():

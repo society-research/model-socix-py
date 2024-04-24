@@ -86,12 +86,14 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     };
     auto move_to_closest_resource = [&]() {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
-        float dx = abs((x - FLAMEGPU->getVariable<float>("closest_resource_x")));
-        float dy = abs((y - FLAMEGPU->getVariable<float>("closest_resource_y")));
+        int closest_x = FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_x", 0);
+        int closest_y = FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_y", 0);
+        int dx = abs((x - closest_x));
+        int dy = abs((y - closest_y));
         if (dx > dy) {
-            x = (x + ((FLAMEGPU->getVariable<float>("closest_resource_x") - x) / dx));
+            x = (x + ((closest_x - x) / dx));
         } else {
-            y = (y + ((FLAMEGPU->getVariable<float>("closest_resource_y") - y) / dy));
+            y = (y + ((closest_y - y) / dy));
         }
     };
     auto rest = [&]() {
@@ -130,16 +132,16 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     if (can_move && FLAMEGPU->getVariable<int>("is_crowded") == 1) {
         scores[Action::RandomWalk] = 10;
     }
-    float closest_resource = FLAMEGPU->getVariable<float>("closest_resource");
-    if (can_collect_resource &&
-        closest_resource <= FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE")) {
+    float closest_resource0 = FLAMEGPU->getVariable<float, N_RESOURCE_TYPES>("closest_resource", 0);
+    if (can_collect_resource && closest_resource0 <= FLAMEGPU->environment.getProperty<float>(
+                                                         "RESOURCE_COLLECTION_RANGE")) {
         scores[Action::CollectResource] = 10;
     }
     if (can_move &&
-        closest_resource > FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE")) {
+        closest_resource0 > FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE")) {
         scores[Action::MoveToClosestResource] =
-            int(10 - closest_resource * FLAMEGPU->environment.getProperty<float>(
-                                            "SCORE_REDUCTION_PER_TILE_DISTANCE"));
+            int(10 - closest_resource0 * FLAMEGPU->environment.getProperty<float>(
+                                             "SCORE_REDUCTION_PER_TILE_DISTANCE"));
     }
     int selected_action = findMax(scores, Action::EOF);
     // printAction(selected_action);

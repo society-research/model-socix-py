@@ -59,20 +59,33 @@ def human_perception_resource_locations(
     agent_x = pyflamegpu.getVariableInt("x")
     agent_y = pyflamegpu.getVariableInt("y")
     # should be math.inf, but traspiling fails: fix would be to use std::numeric_limits<double>::max()
-    closest_resource = 1.7976931348623157e308
-    closest_resource_x = 0.0
-    closest_resource_y = 0.0
+    closest_resource0 = 1.7976931348623157e308
+    closest_resource0_x = 0
+    closest_resource0_y = 0
+    closest_resource1 = 1.7976931348623157e308
+    closest_resource1_x = 0
+    closest_resource1_y = 0
     for resource in message_in.wrap(agent_x, agent_y):
+        resource_type = resource.getVariableInt("type")
         resource_x = resource.getVariableInt("x")
         resource_y = resource.getVariableInt("y")
         d = vec2Length(agent_x - resource_x, agent_y - resource_y)
-        if d < closest_resource:
-            closest_resource = d
-            closest_resource_x = resource_x
-            closest_resource_y = resource_y
-    pyflamegpu.setVariableFloat("closest_resource", closest_resource)
-    pyflamegpu.setVariableFloat("closest_resource_x", closest_resource_x)
-    pyflamegpu.setVariableFloat("closest_resource_y", closest_resource_y)
+        if resource_type == 0:
+            if d < closest_resource0:
+                closest_resource0 = d
+                closest_resource0_x = resource_x
+                closest_resource0_y = resource_y
+        else:
+            if d < closest_resource1:
+                closest_resource1 = d
+                closest_resource0_x = resource_x
+                closest_resource0_y = resource_y
+    pyflamegpu.setVariableFloatArray2("closest_resource", 0, closest_resource0)
+    pyflamegpu.setVariableIntArray2("closest_resource_x", 0, closest_resource0_x)
+    pyflamegpu.setVariableIntArray2("closest_resource_y", 0, closest_resource0_y)
+    pyflamegpu.setVariableFloatArray2("closest_resource", 1, closest_resource1)
+    pyflamegpu.setVariableIntArray2("closest_resource_x", 1, closest_resource1_x)
+    pyflamegpu.setVariableIntArray2("closest_resource_y", 1, closest_resource1_y)
 
 
 @pyflamegpu.agent_function
@@ -105,6 +118,16 @@ def output_location(
     message_out.setVariableInt("y", pyflamegpu.getVariableInt("y"))
 
 
+@pyflamegpu.agent_function
+def output_location_and_type(
+    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageSpatial2D
+):
+    message_out.setVariableInt("id", pyflamegpu.getID())
+    message_out.setVariableInt("x", pyflamegpu.getVariableInt("x"))
+    message_out.setVariableInt("y", pyflamegpu.getVariableInt("y"))
+    message_out.setVariableInt("type", pyflamegpu.getVariableInt("type"))
+
+
 def make_human(model):
     human = model.newAgent("human")
     # properties of a human agent
@@ -114,9 +137,9 @@ def make_human(model):
     human.newVariableFloat("actionpotential")
     human.newVariableInt("hunger")
     # passing data between agent_functions
-    human.newVariableFloat("closest_resource")
-    human.newVariableFloat("closest_resource_x")
-    human.newVariableFloat("closest_resource_y")
+    human.newVariableArrayFloat("closest_resource", C.N_RESOURCE_TYPES, [0, 0])
+    human.newVariableArrayInt("closest_resource_x", C.N_RESOURCE_TYPES, [0, 0])
+    human.newVariableArrayInt("closest_resource_y", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableInt("is_crowded")
     return human
 
@@ -154,15 +177,19 @@ def make_simulation(
             raise RuntimeError("unknown environment variable type")
     env.newPropertyInt("GRID_SIZE", grid_size)
 
-    def make_location_message(model, name):
+    def make_location_message(
+        model: pyflamegpu.ModelDescription, name: str
+    ):  # -> pyflamegpu.MessageDescription:
         message = model.newMessageSpatial2D(name)
         # XXX: setRadius: if not divided by 2, messages wrap around the borders and occur multiple times
         message.setRadius(grid_size / 2)
         message.setMin(0, 0)
         message.setMax(grid_size, grid_size)
         message.newVariableID("id")
+        return message
 
-    make_location_message(model, "resource_location")
+    resource_msg = make_location_message(model, "resource_location")
+    resource_msg.newVariableInt("type")
     make_location_message(model, "human_location")
     ctx.human = make_human(model)
     ctx.resource = make_resource(model)
@@ -182,7 +209,7 @@ def make_simulation(
 
     # layer 1: location message output
     resource_output_location_description = make_agent_function(
-        ctx.resource, "output_location", py_fn=output_location
+        ctx.resource, "output_location", py_fn=output_location_and_type
     )
     resource_output_location_description.setMessageOutput("resource_location")
     human_output_location_description = make_agent_function(

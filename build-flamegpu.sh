@@ -17,12 +17,22 @@ mkdir -p $build_dir
 cd $build_dir
 cmake_opts=(
   -G Ninja
+
+  # basic build config
   -DCMAKE_BUILD_TYPE=$build_type
   -DFLAMEGPU_VISUALISATION=OFF
   -DFLAMEGPU_BUILD_PYTHON=ON
+
+  # increases agent functino compile time by ~60s
+  #-DFLAMEGPU_USE_GLM=ON # enable math: https://github.com/g-truc/glm
+
   # needed for python agent_/device_function debuggin with cuda-gdb
   # see https://docs.flamegpu.com/guide/debugging-models/using-a-debugger.html#linux
   -DFLAMEGPU_RTC_EXPORT_SOURCES=ON
+  # enable `#include "header.cuh"` for RTC agent functions
+  -DFLAMEGPU_RTC_INCLUDE_DIRS=.
+
+  # gpu config
   -DCMAKE_CUDA_COMPILER=nvcc
   #-DCMAKE_CUDA_ARCHITECTURES="75" # <- l01 gpu
   #-DCMAKE_CUDA_ARCHITECTURES="50;52;53;60;61;62;70;72;75;80;86;87;89;90"
