@@ -46,12 +46,15 @@ FLAMEGPU_DEVICE_FUNCTION void printAction(int a) {
     }
 }
 
+constexpr int N_RESOURCE_TYPES = 2;
+
 FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::MessageNone) {
     float ap = FLAMEGPU->getVariable<float>("actionpotential");
     int x = FLAMEGPU->getVariable<int>("x");
     int y = FLAMEGPU->getVariable<int>("y");
     int hunger = FLAMEGPU->getVariable<int>("hunger");
-    int resources = FLAMEGPU->getVariable<int>("resources");
+    int resources0 = FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("resources", 0);
+    int resources1 = FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("resources", 1);
 
     auto random_walk = [&]() {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
@@ -79,7 +82,7 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     };
     auto collect_resource = [&]() {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
-        resources += 1;
+        resources0 += 1;
     };
     auto move_to_closest_resource = [&]() {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
@@ -109,9 +112,9 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
         }
         // XXX: strictly speaking food consumption is behavior and should be
         // scored below before executed
-        if (resources != 0 &&
+        if (resources0 != 0 &&
             hunger > FLAMEGPU->environment.getProperty<int>("HUNGER_TO_TRIGGER_CONSUMPTION")) {
-            resources -= 1;
+            resources0 -= 1;
             hunger -= FLAMEGPU->environment.getProperty<int>("HUNGER_PER_RESOURCE_CONSUMPTION");
         }
     }
@@ -162,7 +165,8 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     FLAMEGPU->setVariable<int>("y", y);
     FLAMEGPU->setVariable<float>("actionpotential", ap);
     FLAMEGPU->setVariable<int>("hunger", hunger);
-    FLAMEGPU->setVariable<int>("resources", resources);
+    FLAMEGPU->setVariable<int, N_RESOURCE_TYPES>("resources", 0, resources0);
+    FLAMEGPU->setVariable<int, N_RESOURCE_TYPES>("resources", 1, resources1);
 
     return flamegpu::ALIVE;
 }

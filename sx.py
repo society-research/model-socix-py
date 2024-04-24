@@ -13,13 +13,16 @@ def sqbrt(x):
 
 C = ostruct.OpenStruct(
     AGENT_COUNT=64,
-    RESOURCE_COLLECTION_RANGE=3.0,
+    # amount of different resource types
+    N_RESOURCE_TYPES=2,
     # default amount of action potential (AP)
     AP_DEFAULT=1.0,
     # AP needed to collect a resource
     AP_COLLECT_RESOURCE=0.1,
     # AP needed to move a block
     AP_MOVE=0.05,
+    # euclidean distance at which resource is in range for collection
+    RESOURCE_COLLECTION_RANGE=3.0,
     # required sleep per night in hours
     SLEEP_REQUIRED_PER_NIGHT=8,
     # amount of humans in a single tile, after which humans feel crowded
@@ -47,27 +50,6 @@ C.AP_REDUCTION_BY_CROWDING = C.AP_DEFAULT / 10
 @pyflamegpu.device_function
 def vec2Length(x: int, y: int) -> float:
     return math.sqrtf(x * x + y * y)
-
-
-# TODO: remove
-@pyflamegpu.agent_function
-def human_perception(
-    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageNone
-):
-    """Humans may die here."""
-    hunger = pyflamegpu.getVariableInt("hunger")
-    resources = pyflamegpu.getVariableInt("resources")
-    hunger += pyflamegpu.environment.getPropertyInt("HUNGER_PER_TICK")
-    if resources != 0:
-        resources -= 1
-        hunger -= pyflamegpu.environment.getPropertyInt(
-            "HUNGER_PER_RESOURCE_CONSUMPTION"
-        )
-    if hunger >= pyflamegpu.environment.getPropertyInt("HUNGER_STARVED_TO_DEATH"):
-        return pyflamegpu.DEAD
-    pyflamegpu.setVariableInt("hunger", hunger)
-    pyflamegpu.setVariableInt("resources", resources)
-    return pyflamegpu.ALIVE
 
 
 @pyflamegpu.agent_function
@@ -109,12 +91,6 @@ def human_perception_human_locations(
         if human_x == other_human_x and human_y == other_human_y:
             close_humans += 1
     if close_humans >= pyflamegpu.environment.getPropertyInt("N_HUMANS_CROWDED"):
-        # happens in agent_fn/human_behavior.cu
-        # pyflamegpu.setVariableInt(
-        #    "actionpotential",
-        #    pyflamegpu.getVariableInt("actionpotential")
-        #    - pyflamegpu.environment.getPropertyInt("AP_REDUCTION_BY_CROWDING"),
-        # )
         pyflamegpu.setVariableInt("is_crowded", 1)
     else:
         pyflamegpu.setVariableInt("is_crowded", 0)
@@ -134,7 +110,7 @@ def make_human(model):
     # properties of a human agent
     human.newVariableInt("x")
     human.newVariableInt("y")
-    human.newVariableInt("resources")
+    human.newVariableArrayInt("resources", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableFloat("actionpotential")
     human.newVariableInt("hunger")
     # passing data between agent_functions
@@ -252,7 +228,7 @@ def make_simulation(
     step_log = pyflamegpu.StepLoggingConfig(model)
     step_log.setFrequency(1)
     step_log.agent("human").logCount()
-    step_log.agent("human").logSumInt("resources")
+    # step_log.agent("human").logSumInt("resources") XXX: porbably not working with array of int
     simulation.setStepLog(step_log)
     return model, simulation, ctx
 
