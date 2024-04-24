@@ -78,8 +78,8 @@ def human_perception_resource_locations(
         else:
             if d < closest_resource1:
                 closest_resource1 = d
-                closest_resource0_x = resource_x
-                closest_resource0_y = resource_y
+                closest_resource1_x = resource_x
+                closest_resource1_y = resource_y
     pyflamegpu.setVariableFloatArray2("closest_resource", 0, closest_resource0)
     pyflamegpu.setVariableIntArray2("closest_resource_x", 0, closest_resource0_x)
     pyflamegpu.setVariableIntArray2("closest_resource_y", 0, closest_resource0_y)

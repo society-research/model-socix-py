@@ -4,6 +4,11 @@ import pyflamegpu
 from sx import make_simulation, C
 
 
+def isclose(a, b) -> bool:
+    """We're using float32 in CUDA so increase equal-tolerance a bit."""
+    return math.isclose(a, b, abs_tol=1e-7, rel_tol=1e-7)
+
+
 def test_collect_resource_no_resource_available():
     model, simulation, ctx = make_simulation()
     humans = pyflamegpu.AgentVector(ctx.human, 1)
@@ -45,10 +50,9 @@ def test_collect_resource_success():
     assert humans[0].getVariableInt("x") == 0
     assert humans[0].getVariableInt("y") == 0
     assert humans[0].getVariableArrayInt("resources") == (2, 0), "collected resource"
-    assert math.isclose(
+    assert isclose(
         humans[0].getVariableFloat("actionpotential"),
         C.AP_DEFAULT - C.AP_COLLECT_RESOURCE,
-        rel_tol=1e-7,
     )
 
 
@@ -73,10 +77,9 @@ def test_move_towards_resource_1d():
         1,
         0,
     ), "no additional resource in range"
-    assert math.isclose(
+    assert isclose(
         humans[0].getVariableFloat("actionpotential"),
         C.AP_DEFAULT - 1 * C.AP_MOVE,
-        rel_tol=1e-7,
     )
     simulation.step()
     simulation.getPopulationData(humans)
@@ -85,18 +88,16 @@ def test_move_towards_resource_1d():
         1,
         0,
     ), "no additional resource in range"
-    assert math.isclose(
+    assert isclose(
         humans[0].getVariableFloat("actionpotential"),
         C.AP_DEFAULT - 2 * C.AP_MOVE,
-        rel_tol=1e-7,
     )
     simulation.step()
     simulation.getPopulationData(humans)
     assert humans[0].getVariableInt("y") == 2, "resource is already in range"
-    assert math.isclose(
+    assert isclose(
         humans[0].getVariableFloat("actionpotential"),
         C.AP_DEFAULT - 2 * C.AP_MOVE - C.AP_COLLECT_RESOURCE,
-        rel_tol=1e-7,
     )
     assert humans[0].getVariableArrayInt("resources") == (2, 0), "collected resource"
 
@@ -174,10 +175,9 @@ def test_crowding_reduces_actionpotential():
     simulation.getPopulationData(humans)
     for human in humans:
         assert human.getVariableInt("is_crowded") == 1
-        assert math.isclose(
+        assert isclose(
             human.getVariableFloat("actionpotential"),
             C.AP_DEFAULT - C.AP_REDUCTION_BY_CROWDING - C.AP_MOVE,
-            abs_tol=1e-7,
         ), "AP reduced & move happened"
         assert (
             human.getVariableInt("x") != 0 or human.getVariableInt("y") != 0
@@ -227,7 +227,7 @@ def test_require_2_different_resources_for_survival():  # TODO
     pass
 
 
-def DISABLED_test_move_towards_2nd_resource_to_stay_alive():
+def test_move_towards_2nd_resource_to_stay_alive():
     model, simulation, ctx = make_simulation(grid_size=100)
     humans = pyflamegpu.AgentVector(ctx.human, 1)
     humans[0].setVariableInt("x", 0)
@@ -239,7 +239,7 @@ def DISABLED_test_move_towards_2nd_resource_to_stay_alive():
     resources[0].setVariableInt("y", 0)
     resources[0].setVariableInt("type", 0)
     resources[1].setVariableInt("x", 0)
-    resources[1].setVariableInt("y", 4)
+    resources[1].setVariableInt("y", 5)
     resources[1].setVariableInt("type", 1)
     simulation.setPopulationData(resources)
     simulation.setPopulationData(humans)
@@ -247,6 +247,18 @@ def DISABLED_test_move_towards_2nd_resource_to_stay_alive():
     simulation.getPopulationData(humans)
     assert humans[0].getVariableInt("x") == 0
     assert humans[0].getVariableInt("y") == 1
+    assert isclose(
+        humans[0].getVariableFloat("actionpotential"),
+        C.AP_DEFAULT - C.AP_MOVE,
+    )
+    simulation.step()
+    simulation.getPopulationData(humans)
+    assert humans[0].getVariableInt("x") == 0
+    assert humans[0].getVariableInt("y") == 2
+    # TODO: assert secondary resource is collected
+    # simulation.step()
+    # simulation.getPopulationData(humans)
+    # assert humans[0].getVariableArrayInt("resources") == (8, 1)
 
 
 # def test_movement_around_2d_grid_boundaries():

@@ -5,10 +5,12 @@
 namespace Action {
 enum Action {
     RandomWalk = 0,
-    Rest = 1,
-    CollectResource = 2,
-    MoveToClosestResource = 3,
-    EOF = 4,
+    Rest,
+    CollectResource0,
+    CollectResource1,
+    MoveToClosestResource0,
+    MoveToClosestResource1,
+    EOF,
 };
 }
 
@@ -33,11 +35,17 @@ FLAMEGPU_DEVICE_FUNCTION void printAction(int a) {
     case Action::Rest:
         printf("rest();\n");
         break;
-    case Action::CollectResource:
-        printf("collect_resource();\n");
+    case Action::CollectResource0:
+        printf("collect_resource(0);\n");
         break;
-    case Action::MoveToClosestResource:
-        printf("move_to_closest_resource();\n");
+    case Action::CollectResource1:
+        printf("collect_resource(1);\n");
+        break;
+    case Action::MoveToClosestResource0:
+        printf("move_to_closest_resource(0);\n");
+        break;
+    case Action::MoveToClosestResource1:
+        printf("move_to_closest_resource(1);\n");
         break;
     case Action::EOF:
     default:
@@ -47,6 +55,7 @@ FLAMEGPU_DEVICE_FUNCTION void printAction(int a) {
 }
 
 constexpr int N_RESOURCE_TYPES = 2;
+constexpr int TARGET_RESOURCE_AMOUNT = 5;
 
 FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::MessageNone) {
     float ap = FLAMEGPU->getVariable<float>("actionpotential");
@@ -80,19 +89,27 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             y = 0;
         }
     };
-    auto collect_resource = [&]() {
+    auto collect_resource = [&](int resource_type) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
-        resources0 += 1;
+        if (resource_type == 0) {
+            resources0 += 1;
+        } else if (resource_type == 1) {
+            resources1 += 1;
+        }
     };
-    auto move_to_closest_resource = [&]() {
+    auto move_to_closest_resource = [&](int resource_type) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
-        int closest_x = FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_x", 0);
-        int closest_y = FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_y", 0);
+        int closest_x =
+            FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_x", resource_type);
+        int closest_y =
+            FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_y", resource_type);
         int dx = abs((x - closest_x));
         int dy = abs((y - closest_y));
         if (dx > dy) {
             x = (x + ((closest_x - x) / dx));
         } else {
+            printf("[resource_type:%d] y=%d, closest_y=%d, dy=%d\n", resource_type, y, closest_y,
+                   dy);
             y = (y + ((closest_y - y) / dy));
         }
     };
@@ -112,8 +129,8 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
         if (hunger >= FLAMEGPU->environment.getProperty<int>("HUNGER_STARVED_TO_DEATH")) {
             return flamegpu::DEAD;
         }
-        // XXX: strictly speaking food consumption is behavior and should be
-        // scored below before executed
+        // TODO(skep): strictly speaking food consumption is behavior and should be scored below
+        // before executed
         if (resources0 != 0 &&
             hunger > FLAMEGPU->environment.getProperty<int>("HUNGER_TO_TRIGGER_CONSUMPTION")) {
             resources0 -= 1;
@@ -133,18 +150,31 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
         scores[Action::RandomWalk] = 10;
     }
     float closest_resource0 = FLAMEGPU->getVariable<float, N_RESOURCE_TYPES>("closest_resource", 0);
+    float closest_resource1 = FLAMEGPU->getVariable<float, N_RESOURCE_TYPES>("closest_resource", 1);
     if (can_collect_resource && closest_resource0 <= FLAMEGPU->environment.getProperty<float>(
                                                          "RESOURCE_COLLECTION_RANGE")) {
-        scores[Action::CollectResource] = 10;
+        scores[Action::CollectResource0] = 10 + (TARGET_RESOURCE_AMOUNT - resources0);
+    }
+    if (can_collect_resource && closest_resource1 <= FLAMEGPU->environment.getProperty<float>(
+                                                         "RESOURCE_COLLECTION_RANGE")) {
+        scores[Action::CollectResource1] = 10 + (TARGET_RESOURCE_AMOUNT - resources0);
     }
     if (can_move &&
         closest_resource0 > FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE")) {
-        scores[Action::MoveToClosestResource] =
+        scores[Action::MoveToClosestResource0] =
             int(10 - closest_resource0 * FLAMEGPU->environment.getProperty<float>(
-                                             "SCORE_REDUCTION_PER_TILE_DISTANCE"));
+                                             "SCORE_REDUCTION_PER_TILE_DISTANCE")) +
+            /*reduce by resource saturation*/ (TARGET_RESOURCE_AMOUNT - resources0);
+    }
+    if (can_move &&
+        closest_resource1 > FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE")) {
+        scores[Action::MoveToClosestResource1] =
+            int(10 - closest_resource1 * FLAMEGPU->environment.getProperty<float>(
+                                             "SCORE_REDUCTION_PER_TILE_DISTANCE")) +
+            /*reduce by resource saturation*/ (TARGET_RESOURCE_AMOUNT - resources1);
     }
     int selected_action = findMax(scores, Action::EOF);
-    // printAction(selected_action);
+    printAction(selected_action);
     switch (selected_action) {
     case Action::RandomWalk:
         random_walk();
@@ -152,11 +182,17 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     case Action::Rest:
         rest();
         break;
-    case Action::CollectResource:
-        collect_resource();
+    case Action::CollectResource0:
+        collect_resource(0);
         break;
-    case Action::MoveToClosestResource:
-        move_to_closest_resource();
+    case Action::CollectResource1:
+        collect_resource(1);
+        break;
+    case Action::MoveToClosestResource0:
+        move_to_closest_resource(0);
+        break;
+    case Action::MoveToClosestResource1:
+        move_to_closest_resource(1);
         break;
     case Action::EOF:
     default:
