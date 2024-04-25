@@ -66,6 +66,7 @@ def human_perception_human_locations(
         pyflamegpu.setVariableInt("is_crowded", 1)
     else:
         pyflamegpu.setVariableInt("is_crowded", 0)
+    return pyflamegpu.ALIVE
 
 
 @pyflamegpu.agent_function
