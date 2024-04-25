@@ -220,11 +220,25 @@ def test_starve_without_resources():
     for _ in range(C.HUNGER_STARVED_TO_DEATH + 1):
         simulation.step()
     simulation.getPopulationData(humans)
-    assert len(humans) == 0
+    assert len(humans) == 0, "agent is dead, no more agents left"
 
 
-def test_require_2_different_resources_for_survival():  # TODO
-    pass
+def test_require_2_different_resources_for_survival():
+    model, simulation, ctx = make_simulation(grid_size=100)
+    humans = pyflamegpu.AgentVector(ctx.human, 2)
+    humans[0].setVariableInt("x", 1)
+    humans[0].setVariableInt("y", 1)
+    humans[0].setVariableArrayInt("resources", (1, 0))
+    humans[0].setVariableFloat("actionpotential", C.AP_DEFAULT)
+    humans[1].setVariableInt("x", 1)
+    humans[1].setVariableInt("y", 1)
+    humans[1].setVariableArrayInt("resources", (1, 1))
+    humans[1].setVariableFloat("actionpotential", C.AP_DEFAULT)
+    simulation.setPopulationData(humans)
+    for _ in range(C.HUNGER_STARVED_TO_DEATH + 1):
+        simulation.step()
+    simulation.getPopulationData(humans)
+    assert len(humans) == 1, "one starves, one stays alive"
 
 
 def test_move_towards_2nd_resource_to_stay_alive():

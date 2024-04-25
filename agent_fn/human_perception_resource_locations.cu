@@ -13,6 +13,7 @@ FLAMEGPU_AGENT_FUNCTION(resource_locations, flamegpu::MessageSpatial2D, flamegpu
         closest_resource_x[resource_type] = 0;
         closest_resource_y[resource_type] = 0;
     }
+    // printf("agent[%d,%d]\n", agent_x, agent_y);
     for (const auto &resource : FLAMEGPU->message_in.wrap(agent_x, agent_y)) {
         int resource_type = resource.getVariable<int>("type");
         int resource_x = resource.getVariable<int>("x");

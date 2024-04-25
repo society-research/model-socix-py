@@ -129,9 +129,10 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
         // TODO(skep): strictly speaking food consumption is behavior and should be scored below
         // before executed
         // TODO(skep): consume resources[1] as well!
-        if (resources[0] != 0 &&
+        if (resources[0] != 0 && resources[1] != 0 &&
             hunger > FLAMEGPU->environment.getProperty<int>("HUNGER_TO_TRIGGER_CONSUMPTION")) {
             resources[0] -= 1;
+            resources[1] -= 1;
             hunger -= FLAMEGPU->environment.getProperty<int>("HUNGER_PER_RESOURCE_CONSUMPTION");
         }
     }
@@ -156,8 +157,10 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             scores[Action::CollectResource0 + resource_type] =
                 10 + (TARGET_RESOURCE_AMOUNT - resources[resource_type]);
         }
-        if (can_move && distance_to_resource >
-                            FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE")) {
+        if (can_move &&
+            distance_to_resource >
+                FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE") &&
+            distance_to_resource != FLT_MAX) {
             scores[Action::MoveToClosestResource0 + resource_type] =
                 int(10 - distance_to_resource * FLAMEGPU->environment.getProperty<float>(
                                                     "SCORE_REDUCTION_PER_TILE_DISTANCE")) +
