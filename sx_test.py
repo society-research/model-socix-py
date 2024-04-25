@@ -255,10 +255,9 @@ def test_move_towards_2nd_resource_to_stay_alive():
     simulation.getPopulationData(humans)
     assert humans[0].getVariableInt("x") == 0
     assert humans[0].getVariableInt("y") == 2
-    # TODO: assert secondary resource is collected
-    # simulation.step()
-    # simulation.getPopulationData(humans)
-    # assert humans[0].getVariableArrayInt("resources") == (8, 1)
+    simulation.step()
+    simulation.getPopulationData(humans)
+    assert humans[0].getVariableArrayInt("resources") == (10, 1)
 
 
 # def test_movement_around_2d_grid_boundaries():

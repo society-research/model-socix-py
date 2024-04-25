@@ -47,47 +47,6 @@ C.AP_PER_TICK_RESTING = C.AP_DEFAULT / C.SLEEP_REQUIRED_PER_NIGHT
 C.AP_REDUCTION_BY_CROWDING = C.AP_DEFAULT / 10
 
 
-@pyflamegpu.device_function
-def vec2Length(x: int, y: int) -> float:
-    return math.sqrtf(x * x + y * y)
-
-
-@pyflamegpu.agent_function
-def human_perception_resource_locations(
-    message_in: pyflamegpu.MessageSpatial2D, message_out: pyflamegpu.MessageNone
-):
-    agent_x = pyflamegpu.getVariableInt("x")
-    agent_y = pyflamegpu.getVariableInt("y")
-    # should be math.inf, but traspiling fails: fix would be to use std::numeric_limits<double>::max()
-    closest_resource0 = 1.7976931348623157e308
-    closest_resource0_x = 0
-    closest_resource0_y = 0
-    closest_resource1 = 1.7976931348623157e308
-    closest_resource1_x = 0
-    closest_resource1_y = 0
-    for resource in message_in.wrap(agent_x, agent_y):
-        resource_type = resource.getVariableInt("type")
-        resource_x = resource.getVariableInt("x")
-        resource_y = resource.getVariableInt("y")
-        d = vec2Length(agent_x - resource_x, agent_y - resource_y)
-        if resource_type == 0:
-            if d < closest_resource0:
-                closest_resource0 = d
-                closest_resource0_x = resource_x
-                closest_resource0_y = resource_y
-        else:
-            if d < closest_resource1:
-                closest_resource1 = d
-                closest_resource1_x = resource_x
-                closest_resource1_y = resource_y
-    pyflamegpu.setVariableFloatArray2("closest_resource", 0, closest_resource0)
-    pyflamegpu.setVariableIntArray2("closest_resource_x", 0, closest_resource0_x)
-    pyflamegpu.setVariableIntArray2("closest_resource_y", 0, closest_resource0_y)
-    pyflamegpu.setVariableFloatArray2("closest_resource", 1, closest_resource1)
-    pyflamegpu.setVariableIntArray2("closest_resource_x", 1, closest_resource1_x)
-    pyflamegpu.setVariableIntArray2("closest_resource_y", 1, closest_resource1_y)
-
-
 @pyflamegpu.agent_function
 def human_perception_human_locations(
     message_in: pyflamegpu.MessageSpatial2D, message_out: pyflamegpu.MessageNone
@@ -220,7 +179,7 @@ def make_simulation(
     human_perception_resource_locations_description = make_agent_function(
         ctx.human,
         "human_perception_resource_locations",
-        py_fn=human_perception_resource_locations,
+        cuda_fn_file="agent_fn/human_perception_resource_locations.cu",
     )
     human_perception_resource_locations_description.setMessageInput("resource_location")
     human_perception_human_locations_description = make_agent_function(
