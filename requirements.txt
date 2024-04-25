@@ -1,4 +1,6 @@
 ostruct
+# dev dependencies:
 pytest
 black
+flake8
 ipython

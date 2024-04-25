@@ -13,13 +13,16 @@ def sqbrt(x):
 
 C = ostruct.OpenStruct(
     AGENT_COUNT=64,
-    RESOURCE_COLLECTION_RANGE=3.0,
+    # amount of different resource types
+    N_RESOURCE_TYPES=2,
     # default amount of action potential (AP)
     AP_DEFAULT=1.0,
     # AP needed to collect a resource
     AP_COLLECT_RESOURCE=0.1,
     # AP needed to move a block
     AP_MOVE=0.05,
+    # euclidean distance at which resource is in range for collection
+    RESOURCE_COLLECTION_RANGE=3.0,
     # required sleep per night in hours
     SLEEP_REQUIRED_PER_NIGHT=8,
     # amount of humans in a single tile, after which humans feel crowded
@@ -44,55 +47,6 @@ C.AP_PER_TICK_RESTING = C.AP_DEFAULT / C.SLEEP_REQUIRED_PER_NIGHT
 C.AP_REDUCTION_BY_CROWDING = C.AP_DEFAULT / 10
 
 
-@pyflamegpu.device_function
-def vec2Length(x: int, y: int) -> float:
-    return math.sqrtf(x * x + y * y)
-
-
-# TODO: remove
-@pyflamegpu.agent_function
-def human_perception(
-    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageNone
-):
-    """Humans may die here."""
-    hunger = pyflamegpu.getVariableInt("hunger")
-    resources = pyflamegpu.getVariableInt("resources")
-    hunger += pyflamegpu.environment.getPropertyInt("HUNGER_PER_TICK")
-    if resources != 0:
-        resources -= 1
-        hunger -= pyflamegpu.environment.getPropertyInt(
-            "HUNGER_PER_RESOURCE_CONSUMPTION"
-        )
-    if hunger >= pyflamegpu.environment.getPropertyInt("HUNGER_STARVED_TO_DEATH"):
-        return pyflamegpu.DEAD
-    pyflamegpu.setVariableInt("hunger", hunger)
-    pyflamegpu.setVariableInt("resources", resources)
-    return pyflamegpu.ALIVE
-
-
-@pyflamegpu.agent_function
-def human_perception_resource_locations(
-    message_in: pyflamegpu.MessageSpatial2D, message_out: pyflamegpu.MessageNone
-):
-    agent_x = pyflamegpu.getVariableInt("x")
-    agent_y = pyflamegpu.getVariableInt("y")
-    # should be math.inf, but traspiling fails: fix would be to use std::numeric_limits<double>::max()
-    closest_resource = 1.7976931348623157e308
-    closest_resource_x = 0.0
-    closest_resource_y = 0.0
-    for resource in message_in.wrap(agent_x, agent_y):
-        resource_x = resource.getVariableInt("x")
-        resource_y = resource.getVariableInt("y")
-        d = vec2Length(agent_x - resource_x, agent_y - resource_y)
-        if d < closest_resource:
-            closest_resource = d
-            closest_resource_x = resource_x
-            closest_resource_y = resource_y
-    pyflamegpu.setVariableFloat("closest_resource", closest_resource)
-    pyflamegpu.setVariableFloat("closest_resource_x", closest_resource_x)
-    pyflamegpu.setVariableFloat("closest_resource_y", closest_resource_y)
-
-
 @pyflamegpu.agent_function
 def human_perception_human_locations(
     message_in: pyflamegpu.MessageSpatial2D, message_out: pyflamegpu.MessageNone
@@ -109,12 +63,6 @@ def human_perception_human_locations(
         if human_x == other_human_x and human_y == other_human_y:
             close_humans += 1
     if close_humans >= pyflamegpu.environment.getPropertyInt("N_HUMANS_CROWDED"):
-        # happens in agent_fn/human_behavior.cu
-        # pyflamegpu.setVariableInt(
-        #    "actionpotential",
-        #    pyflamegpu.getVariableInt("actionpotential")
-        #    - pyflamegpu.environment.getPropertyInt("AP_REDUCTION_BY_CROWDING"),
-        # )
         pyflamegpu.setVariableInt("is_crowded", 1)
     else:
         pyflamegpu.setVariableInt("is_crowded", 0)
@@ -129,18 +77,28 @@ def output_location(
     message_out.setVariableInt("y", pyflamegpu.getVariableInt("y"))
 
 
+@pyflamegpu.agent_function
+def output_location_and_type(
+    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageSpatial2D
+):
+    message_out.setVariableInt("id", pyflamegpu.getID())
+    message_out.setVariableInt("x", pyflamegpu.getVariableInt("x"))
+    message_out.setVariableInt("y", pyflamegpu.getVariableInt("y"))
+    message_out.setVariableInt("type", pyflamegpu.getVariableInt("type"))
+
+
 def make_human(model):
     human = model.newAgent("human")
     # properties of a human agent
     human.newVariableInt("x")
     human.newVariableInt("y")
-    human.newVariableInt("resources")
+    human.newVariableArrayInt("resources", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableFloat("actionpotential")
     human.newVariableInt("hunger")
     # passing data between agent_functions
-    human.newVariableFloat("closest_resource")
-    human.newVariableFloat("closest_resource_x")
-    human.newVariableFloat("closest_resource_y")
+    human.newVariableArrayFloat("closest_resource", C.N_RESOURCE_TYPES, [0, 0])
+    human.newVariableArrayInt("closest_resource_x", C.N_RESOURCE_TYPES, [0, 0])
+    human.newVariableArrayInt("closest_resource_y", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableInt("is_crowded")
     return human
 
@@ -178,15 +136,19 @@ def make_simulation(
             raise RuntimeError("unknown environment variable type")
     env.newPropertyInt("GRID_SIZE", grid_size)
 
-    def make_location_message(model, name):
+    def make_location_message(
+        model: pyflamegpu.ModelDescription, name: str
+    ):  # -> pyflamegpu.MessageDescription:
         message = model.newMessageSpatial2D(name)
         # XXX: setRadius: if not divided by 2, messages wrap around the borders and occur multiple times
         message.setRadius(grid_size / 2)
         message.setMin(0, 0)
         message.setMax(grid_size, grid_size)
         message.newVariableID("id")
+        return message
 
-    make_location_message(model, "resource_location")
+    resource_msg = make_location_message(model, "resource_location")
+    resource_msg.newVariableInt("type")
     make_location_message(model, "human_location")
     ctx.human = make_human(model)
     ctx.resource = make_resource(model)
@@ -206,7 +168,7 @@ def make_simulation(
 
     # layer 1: location message output
     resource_output_location_description = make_agent_function(
-        ctx.resource, "output_location", py_fn=output_location
+        ctx.resource, "output_location", py_fn=output_location_and_type
     )
     resource_output_location_description.setMessageOutput("resource_location")
     human_output_location_description = make_agent_function(
@@ -217,7 +179,7 @@ def make_simulation(
     human_perception_resource_locations_description = make_agent_function(
         ctx.human,
         "human_perception_resource_locations",
-        py_fn=human_perception_resource_locations,
+        cuda_fn_file="agent_fn/human_perception_resource_locations.cu",
     )
     human_perception_resource_locations_description.setMessageInput("resource_location")
     human_perception_human_locations_description = make_agent_function(
@@ -252,7 +214,7 @@ def make_simulation(
     step_log = pyflamegpu.StepLoggingConfig(model)
     step_log.setFrequency(1)
     step_log.agent("human").logCount()
-    step_log.agent("human").logSumInt("resources")
+    # step_log.agent("human").logSumInt("resources") XXX: porbably not working with array of int
     simulation.setStepLog(step_log)
     return model, simulation, ctx
 
