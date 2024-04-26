@@ -169,7 +169,7 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
         }
     }
     int selected_action = findMax(scores, Action::EOF);
-    printAction(selected_action);
+    // printAction(selected_action);
     switch (selected_action) {
     case Action::RandomWalk:
         random_walk();

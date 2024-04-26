@@ -1,6 +1,9 @@
+# model dependencies:
 ostruct
 # dev dependencies:
 pytest
 black
 flake8
 ipython
+matplotlib
+POT # -- optimal transport solvers

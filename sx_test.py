@@ -1,4 +1,6 @@
 import math
+import numpy as np
+import ot
 import pyflamegpu
 
 from sx import make_simulation, C
@@ -202,9 +204,6 @@ def test_crowding_should_resolve():
     simulation.getPopulationData(humans)
     crowded = 0
     for human in humans:
-        # print(
-        #     f"human[{human.getID()}], at=[{human.getVariableInt('x')}, {human.getVariableInt('y')}], ap={human.getVariableFloat('actionpotential')}"
-        # )
         crowded += human.getVariableInt("is_crowded")
     assert crowded <= 15, "<= 15% should be crowded after 10 steps"
 
@@ -274,11 +273,21 @@ def test_move_towards_2nd_resource_to_stay_alive():
     assert humans[0].getVariableArrayInt("resources") == (10, 1)
 
 
-# def test_movement_around_2d_grid_boundaries():
-#    model, simulation, ctx = make_simulation()
-#    humans = pyflamegpu.AgentVector(ctx.human, 1)
-#    humans[0].setVariableInt("x", 0)
-#    humans[0].setVariableInt("y", 0)
-#    simulation.setPopulationData(humans)
-#    simulation.step()
-#    simulation.getPopulationData(humans)
+def test_solve_ot_problem():
+    """Setup here is similar to https://pythonot.github.io/auto_examples/plot_OT_2D_samples.html"""
+    # OT solution:
+    pos_source = np.array([[0, 0]])
+    pos_target = np.array([[0, 30]])
+    M_loss = ot.dist(pos_source, pos_target)
+    # ABM solution:
+    model, simulation, ctx = make_simulation(grid_size=100)
+    humans = pyflamegpu.AgentVector(ctx.human, len(pos_source))
+    for p, human in zip(pos_source, humans):
+        human.setVariableInt("x", int(p[0]))
+        human.setVariableInt("y", int(p[1]))
+        human.setVariableArrayInt("resources", (10, 10))
+        human.setVariableFloat("actionpotential", C.AP_DEFAULT)
+    # assert they're equal
+    assert (
+        M_loss == np.array([[900]])
+    ).all(), "test my understand of OT: maxtrix should be 1x1"

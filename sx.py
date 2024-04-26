@@ -1,6 +1,5 @@
 import sys
 import random
-import math
 import ostruct
 import pyflamegpu
 import pyflamegpu.codegen
@@ -127,10 +126,10 @@ def make_simulation(
         if key[0] == "_":
             continue
         val = C[key]
-        if type(val) == float:
+        if type(val) is float:
             vprint(f"env[{key},float] = {val}")
             env.newPropertyFloat(key, val)
-        elif type(val) == int:
+        elif type(val) is int:
             vprint(f"env[{key},int] = {val}")
             env.newPropertyInt(key, val)
         else:
