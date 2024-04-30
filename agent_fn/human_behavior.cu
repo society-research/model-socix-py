@@ -90,11 +90,14 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     };
     auto collect_resource = [&](int resource_type) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
-        if (resource_type == 0) {
-            resources[0] += 1;
-        } else if (resource_type == 1) {
-            resources[1] += 1;
-        }
+        resources[resource_type] += 1;
+        // store analysis data
+        int resource_x =
+            FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_x", resource_type);
+        int resource_y =
+            FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_y", resource_type);
+        FLAMEGPU->setVariable<int, 2>("ana_last_resource_location", 0, resource_x);
+        FLAMEGPU->setVariable<int, 2>("ana_last_resource_location", 1, resource_y);
     };
     auto move_to_closest_resource = [&](int resource_type) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");

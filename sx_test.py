@@ -1,5 +1,7 @@
 import math
 import numpy as np
+import random
+
 import ot
 import pyflamegpu
 
@@ -275,19 +277,94 @@ def test_move_towards_2nd_resource_to_stay_alive():
 
 def test_solve_ot_problem():
     """Setup here is similar to https://pythonot.github.io/auto_examples/plot_OT_2D_samples.html"""
+    # this test initializes humans at "random" positions XXX: should be an accuracy benchmark to repeat this with different seeds!
+    seed = 2
+    random.seed(seed)
     # OT solution:
     pos_source = np.array([[0, 0]])
     pos_target = np.array([[0, 30]])
     M_loss = ot.dist(pos_source, pos_target)
     # ABM solution:
-    model, simulation, ctx = make_simulation(grid_size=100)
-    humans = pyflamegpu.AgentVector(ctx.human, len(pos_source))
-    for p, human in zip(pos_source, humans):
-        human.setVariableInt("x", int(p[0]))
-        human.setVariableInt("y", int(p[1]))
+    grid_size = 100
+    model, simulation, ctx = make_simulation(grid_size=grid_size)
+    simulation.SimulationConfig().random_seed = seed
+    resources = [
+        pyflamegpu.AgentVector(ctx.resource, len(pos_source)),
+        pyflamegpu.AgentVector(ctx.resource, len(pos_target)),
+    ]
+    for p, r in zip(pos_source, resources[0]):
+        r.setVariableInt("x", int(p[0]))
+        r.setVariableInt("y", int(p[1]))
+        r.setVariableInt("type", 0)
+    for p, r in zip(pos_target, resources[1]):
+        r.setVariableInt("x", int(p[0]))
+        r.setVariableInt("y", int(p[1]))
+        r.setVariableInt("type", 1)
+    n_humans = 10
+    humans = pyflamegpu.AgentVector(ctx.human, n_humans)
+    for human in humans:
+        r.setVariableInt("x", random.randint(0, grid_size))
+        r.setVariableInt("y", random.randint(0, grid_size))
         human.setVariableArrayInt("resources", (10, 10))
         human.setVariableFloat("actionpotential", C.AP_DEFAULT)
+    for av in [*resources, humans]:
+        simulation.setPopulationData(av)
+    steps = 100
+    paths = []
+    collected_resources = []
+    for step in range(steps):
+        simulation.step()
+        simulation.getPopulationData(humans)
+        for human in humans:
+            id = human.getID()
+            x, y = human.getVariableInt("x"), human.getVariableInt("y")
+            paths.append([id, x, y])
+            collected_resources.append(
+                [id, *human.getVariableArrayInt("ana_last_resource_location")]
+            )
+    # paths = np.array(paths)
+    # for id in set(paths[:,0]):
+    #    path = paths[paths[:,0] == id][:,1:3]
+    #    x = path[:,0]
+    #    y = path[:,1]
+    # assert (paths[0] == np.array([0., 0., 0.])).all()
     # assert they're equal
     assert (
         M_loss == np.array([[900]])
-    ).all(), "test my understand of OT: maxtrix should be 1x1"
+    ).all(), "test my understanding of OT: maxtrix should be 1x1"
+
+
+def collected_resource_list_to_cost_matrix(collections):
+    agents = {}
+    for event in collections:
+        if event[0] not in agents.keys():
+            agents[event[0]] = []
+        agents[event[0]].append(event[1:])
+    return np.array([[1]])
+
+
+def test_collected_resource_list_to_cost_matrix():
+    # a single agent (id=1) collects at 0,0, then at 5,5
+    pos_source = np.array([[0, 0]])
+    pos_target = np.array([[5, 5]])
+    assert np.array(
+        [
+            [1],
+        ]
+    ) == collected_resource_list_to_cost_matrix(
+        np.array([[1, *pos_source[0]], [1, *pos_target[0]]])
+    )
+    # two humans collecting each from two resources
+    pos_source = np.array([[0, 0], [1, 1]])
+    pos_target = np.array([[5, 5], [6, 6]])
+    assert np.array(
+        [
+            [1, 0],
+            [0, 1],
+        ]
+    ) == collected_resource_list_to_cost_matrix(
+        np.array([
+            [1, *pos_source[0]], [1, *pos_target[0]],
+            [2, *pos_source[1]], [2, *pos_target[1]],
+        ])
+    )

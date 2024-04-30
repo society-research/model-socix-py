@@ -100,6 +100,8 @@ def make_human(model):
     human.newVariableArrayInt("closest_resource_x", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableArrayInt("closest_resource_y", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableInt("is_crowded")
+    # analysis data
+    human.newVariableArrayInt("ana_last_resource_location", 2, [0, 0])
     return human
 
 
@@ -112,7 +114,7 @@ def make_resource(model):
 
 
 def vprint(*args, **kwargs):
-    if "-v" in sys.argv:
+    if "-vv" in sys.argv:
         print(*args, **kwargs)
 
 
