@@ -2,6 +2,7 @@ import math
 import numpy as np
 import random
 
+import pytest
 import ot
 import pyflamegpu
 
@@ -275,14 +276,20 @@ def test_move_towards_2nd_resource_to_stay_alive():
     assert humans[0].getVariableArrayInt("resources") == (10, 1)
 
 
-def test_solve_ot_problem():
+@pytest.mark.parametrize(
+    "name, pos_source, pos_target",
+    [
+        ["single resource, on y axis", np.array([[0, 0]]), np.array([[0, 30]])],
+        #["single resource x,y-axis", np.array([[10, 10]]), np.array([[30, 30]])],
+    ],
+)
+def test_solve_ot_problem(name, pos_source, pos_target):
     """Setup here is similar to https://pythonot.github.io/auto_examples/plot_OT_2D_samples.html"""
-    # this test initializes humans at "random" positions XXX: should be an accuracy benchmark to repeat this with different seeds!
+    # this test initializes humans at "random" positions
+    # XXX: should be an accuracy benchmark to repeat this with different seeds!
     seed = 2
     random.seed(seed)
     # OT solution:
-    pos_source = np.array([[0, 0]])
-    pos_target = np.array([[0, 30]])
     M_loss = ot.dist(pos_source, pos_target)
     # ABM solution:
     grid_size = 100
@@ -309,7 +316,7 @@ def test_solve_ot_problem():
         human.setVariableFloat("actionpotential", C.AP_DEFAULT)
     for av in [*resources, humans]:
         simulation.setPopulationData(av)
-    steps = 100
+    steps = 91
     paths = []
     collected_resources = []
     for step in range(steps):
@@ -322,6 +329,7 @@ def test_solve_ot_problem():
             collected_resources.append(
                 [id, *human.getVariableArrayInt("ana_last_resource_location")]
             )
+    print(collected_resources)
     # paths = np.array(paths)
     # for id in set(paths[:,0]):
     #    path = paths[paths[:,0] == id][:,1:3]
@@ -329,42 +337,69 @@ def test_solve_ot_problem():
     #    y = path[:,1]
     # assert (paths[0] == np.array([0., 0., 0.])).all()
     # assert they're equal
-    assert (
-        M_loss == np.array([[900]])
-    ).all(), "test my understanding of OT: maxtrix should be 1x1"
+    got = collected_resource_list_to_cost_matrix(
+        collected_resources, pos_source, pos_target
+    )
+    exp = M_loss
+    assert exp.shape == got.shape
+    assert np.allclose(exp, got, atol=0.1)
 
 
-def collected_resource_list_to_cost_matrix(collections):
+def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocations):
+    cost = np.zeros((len(srcLocations), len(tgtLocations)))
     agents = {}
     for event in collections:
+        event = np.array(event)
         if event[0] not in agents.keys():
             agents[event[0]] = []
         agents[event[0]].append(event[1:])
-    return np.array([[1]])
+    for id, events in agents.items():
+        for i in range(0, len(events) - 1):
+            srcLocation, tgtLocation = events[i], events[i + 1]
+            if (srcLocation == tgtLocation).all():
+                continue
+            x = np.where(srcLocations == srcLocation)[0][0]
+            y = np.where(tgtLocations == tgtLocation)[0][0]
+            cost[x, y] += 1
+    return cost
 
 
-def test_collected_resource_list_to_cost_matrix():
-    # a single agent (id=1) collects at 0,0, then at 5,5
-    pos_source = np.array([[0, 0]])
-    pos_target = np.array([[5, 5]])
-    assert np.array(
-        [
-            [1],
-        ]
-    ) == collected_resource_list_to_cost_matrix(
-        np.array([[1, *pos_source[0]], [1, *pos_target[0]]])
+@pytest.mark.parametrize( "name, pos_source, pos_target, collection_list, exp",
+[
+    [
+        "a single agent (id=1) collects at 0,0, then at 5,5",
+        np.array([[0, 0]]),
+        np.array([[5, 5]]),
+        np.array([[1, 0, 0], [1, 0, 0], [1, 5, 5]]),
+        np.array([[1]]),
+    ],
+    [
+        "two humans collecting each from two resources",
+        np.array([[0, 0], [1, 1]]),
+        np.array([[5, 5], [6, 6]]),
+        np.array(
+            [
+                [1, 0, 0],
+                [1, 5, 5],
+                [2, 1, 1],
+                [2, 6, 6],
+            ]
+        ),
+        np.array(
+            [
+                [1, 0],
+                [0, 1],
+            ]
+        ),
+    ],
+])
+def test_collected_resource_list_to_cost_matrix(
+    name, pos_source, pos_target, collection_list, exp
+):
+    got = collected_resource_list_to_cost_matrix(
+        collection_list,
+        pos_source,
+        pos_target,
     )
-    # two humans collecting each from two resources
-    pos_source = np.array([[0, 0], [1, 1]])
-    pos_target = np.array([[5, 5], [6, 6]])
-    assert np.array(
-        [
-            [1, 0],
-            [0, 1],
-        ]
-    ) == collected_resource_list_to_cost_matrix(
-        np.array([
-            [1, *pos_source[0]], [1, *pos_target[0]],
-            [2, *pos_source[1]], [2, *pos_target[1]],
-        ])
-    )
+    assert exp.shape == got.shape
+    assert (exp == got).all()

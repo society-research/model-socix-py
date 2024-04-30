@@ -96,6 +96,7 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_x", resource_type);
         int resource_y =
             FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_y", resource_type);
+        printf("collecting x=%d, y=%d", resource_x, resource_y);
         FLAMEGPU->setVariable<int, 2>("ana_last_resource_location", 0, resource_x);
         FLAMEGPU->setVariable<int, 2>("ana_last_resource_location", 1, resource_y);
     };
