@@ -26,31 +26,32 @@ FLAMEGPU_DEVICE_FUNCTION int findMax(int ar[], int len) {
     }
     return max_index;
 }
-FLAMEGPU_DEVICE_FUNCTION void printAction(int a) {
+FLAMEGPU_DEVICE_FUNCTION void printAction(int id, int a) {
     switch (a) {
     case Action::RandomWalk:
-        printf("random_walk();\n");
+        printf("%d->random_walk();", id);
         break;
     case Action::Rest:
-        printf("rest();\n");
+        printf("%d->rest();", id);
         break;
     case Action::CollectResource0:
-        printf("collect_resource(0);\n");
+        printf("%d->collect_resource(0);", id);
         break;
     case Action::CollectResource1:
-        printf("collect_resource(1);\n");
+        printf("%d->collect_resource(1);", id);
         break;
     case Action::MoveToClosestResource0:
-        printf("move_to_closest_resource(0);\n");
+        printf("%d->move_to_closest_resource(0);", id);
         break;
     case Action::MoveToClosestResource1:
-        printf("move_to_closest_resource(1);\n");
+        printf("%d->move_to_closest_resource(1);", id);
         break;
     case Action::EOF:
     default:
-        printf("Action::EOF");
+        printf("%d->Action::EOF", id);
         break;
     }
+    // printf("\n");
 }
 
 FLAMEGPU_DEVICE_FUNCTION float distance(int x, int y, int xo, int yo) {
@@ -181,7 +182,7 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
         }
     }
     int selected_action = findMax(scores, Action::EOF);
-    printAction(selected_action);
+    // printAction(FLAMEGPU->getID(), selected_action);
     switch (selected_action) {
     case Action::RandomWalk:
         random_walk();

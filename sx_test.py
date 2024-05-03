@@ -280,8 +280,8 @@ def test_move_towards_2nd_resource_to_stay_alive():
 @pytest.mark.parametrize(
     "name, pos_source, pos_target",
     [
-        # ["single resource, on y axis", np.array([[1, 1]]), np.array([[1, 31]])],
-        ["single resource x,y-axis", np.array([[10, 10]]), np.array([[30, 30]])],
+        ["single resource, on y axis", np.array([[11, 11]]), np.array([[0, 30]])],
+        # ["single resource x,y-axis", np.array([[10, 10]]), np.array([[30, 30]])],
     ],
 )
 def test_solve_ot_problem(name, pos_source, pos_target):
@@ -290,36 +290,33 @@ def test_solve_ot_problem(name, pos_source, pos_target):
     # XXX: should be an accuracy benchmark to repeat this with different seeds!
     seed = 2
     random.seed(seed)
-    # OT solution:
+    # OT solution: Sinkhorn's Algorithm
     M_loss = ot.dist(pos_source, pos_target)
     # ABM solution:
     grid_size = 30
     model, simulation, ctx = make_simulation(grid_size=grid_size)
     simulation.SimulationConfig().random_seed = seed
-    resources = [
-        pyflamegpu.AgentVector(ctx.resource, len(pos_source)),
-        pyflamegpu.AgentVector(ctx.resource, len(pos_target)),
-    ]
-    for p, r in zip(pos_source, resources[0]):
+    resources = pyflamegpu.AgentVector(ctx.resource, len(pos_source) + len(pos_target))
+    for i, p in enumerate(pos_source):
         print(f"creating resource[t=0] @ {p} ({int(p[0])}, {int(p[1])})")
-        r.setVariableInt("x", int(p[0]))
-        r.setVariableInt("y", int(p[1]))
-        r.setVariableInt("type", 0)
-    for p, r in zip(pos_target, resources[1]):
+        resources[i].setVariableInt("x", int(p[0]))
+        resources[i].setVariableInt("y", int(p[1]))
+        resources[i].setVariableInt("type", 0)
+    for i, p in enumerate(pos_target):
         print(f"creating resource[t=1] @ {p} ({int(p[0])}, {int(p[1])})")
-        r.setVariableInt("x", int(p[0]))
-        r.setVariableInt("y", int(p[1]))
-        r.setVariableInt("type", 1)
+        resources[i + len(pos_source)].setVariableInt("x", int(p[0]))
+        resources[i + len(pos_source)].setVariableInt("y", int(p[1]))
+        resources[i + len(pos_source)].setVariableInt("type", 1)
     n_humans = 10
     humans = pyflamegpu.AgentVector(ctx.human, n_humans)
     for human in humans:
-        r.setVariableInt("x", random.randint(0, grid_size))
-        r.setVariableInt("y", random.randint(0, grid_size))
-        human.setVariableArrayInt("resources", (10, 10))
+        human.setVariableInt("x", random.randint(0, grid_size))
+        human.setVariableInt("y", random.randint(0, grid_size))
+        human.setVariableArrayInt("resources", (2, 2))
         human.setVariableFloat("actionpotential", C.AP_DEFAULT)
-    for av in [*resources, humans]:
+    for av in [resources, humans]:
         simulation.setPopulationData(av)
-    steps = 30
+    steps = 100
     paths = []
     collected_resources = []
     for step in range(steps):
@@ -340,8 +337,11 @@ def test_solve_ot_problem(name, pos_source, pos_target):
     #    y = path[:,1]
     # assert (paths[0] == np.array([0., 0., 0.])).all()
     # assert they're equal
-    got = util.collected_resource_list_to_cost_matrix(
-        collected_resources, pos_source, pos_target
+    got = (
+        util.collected_resource_list_to_cost_matrix(
+            collected_resources, pos_source, pos_target
+        )
+        * 241
     )
     exp = M_loss
     assert exp.shape == got.shape
