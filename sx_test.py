@@ -281,7 +281,7 @@ def test_move_towards_2nd_resource_to_stay_alive():
     "name, pos_source, pos_target",
     [
         ["single resource, on y axis", np.array([[11, 11]]), np.array([[0, 30]])],
-        # ["single resource x,y-axis", np.array([[10, 10]]), np.array([[30, 30]])],
+        ["3-1 resources", np.array([[0, 0], [30, 20], [0, 10]]), np.array([[20, 20]])],
     ],
 )
 def test_solve_ot_problem(name, pos_source, pos_target):
@@ -327,7 +327,6 @@ def test_solve_ot_problem(name, pos_source, pos_target):
             loc = human.getVariableArrayInt("ana_last_resource_location")
             if loc != (-1, -1):
                 collected_resources.append([id, *loc])
-    # print(collected_resources)
     # paths = np.array(paths)
     # for id in set(paths[:,0]):
     #    path = paths[paths[:,0] == id][:,1:3]
@@ -339,11 +338,11 @@ def test_solve_ot_problem(name, pos_source, pos_target):
         util.collected_resource_list_to_cost_matrix(
             collected_resources, pos_source, pos_target
         )
-        * 241
+        * 241  # FIXME: do proportionality analysis instead of manual scaling
     )
     exp = M_loss
     assert exp.shape == got.shape
-    print("res", collected_resources)
+    print("res[-10:]", collected_resources[-10:])
     print("exp", exp)
     print("got", got)
     assert np.allclose(exp, got, atol=0.1)
@@ -375,6 +374,24 @@ def test_solve_ot_problem(name, pos_source, pos_target):
                 [
                     [1, 0],
                     [0, 1],
+                ]
+            ),
+        ],
+        [
+            "single human walking back and forth beween resources",
+            np.array([[0, 0]]),
+            np.array([[5, 5]]),
+            np.array(
+                [
+                    [1, 0, 0],
+                    [1, 5, 5],
+                    [1, 0, 0],
+                    [1, 5, 5],
+                ]
+            ),
+            np.array(
+                [
+                    [3],
                 ]
             ),
         ],

@@ -16,13 +16,16 @@ def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocatio
                 continue
             x = np.where((srcLocations == srcLocation).all(axis=1))[0]
             y = np.where((tgtLocations == tgtLocation).all(axis=1))[0]
+            if len(x) == 0 or len(y) == 0:
+                x = np.where((srcLocations == tgtLocation).all(axis=1))[0]
+                y = np.where((tgtLocations == srcLocation).all(axis=1))[0]
             if len(x) == 0:
                 raise RuntimeError(
-                    f"src={srcLocation} not found in locations={srcLocations}"
+                    f"src={srcLocation} not found in srcLocations={srcLocations} or tgtLocations={tgtLocations}"
                 )
             if len(y) == 0:
                 raise RuntimeError(
-                    f"tgt={tgtLocation} not found in locations={tgtLocations}"
+                    f"tgt={tgtLocation} not found in srcLocations={srcLocations} or tgtLocations={tgtLocations}"
                 )
             x = x[0]
             y = y[0]
