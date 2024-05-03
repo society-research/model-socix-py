@@ -6,7 +6,7 @@ FLAMEGPU_AGENT_FUNCTION(human_perception_human_locations, flamegpu::MessageSpati
     auto human_x = FLAMEGPU->getVariable<int>("x");
     auto human_y = FLAMEGPU->getVariable<int>("y");
     auto close_humans = 0;
-    for (const auto &human : FLAMEGPU->message_in.wrap(human_x, human_y)) {
+    for (const auto &human : FLAMEGPU->message_in) {
         if (human.getVariable<int>("id") == id) {
             continue;
         }

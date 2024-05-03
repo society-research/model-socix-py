@@ -48,13 +48,13 @@ C.AP_REDUCTION_BY_CROWDING = C.AP_DEFAULT / 10
 
 @pyflamegpu.agent_function
 def human_perception_human_locations(
-    message_in: pyflamegpu.MessageSpatial2D, message_out: pyflamegpu.MessageNone
+    message_in: pyflamegpu.MessageBruteForce, message_out: pyflamegpu.MessageNone
 ):
     id = pyflamegpu.getID()
     human_x = pyflamegpu.getVariableInt("x")
     human_y = pyflamegpu.getVariableInt("y")
     close_humans = 0
-    for human in message_in.wrap(human_x, human_y):
+    for human in message_in:
         if human.getVariableInt("id") == id:
             continue
         other_human_x = human.getVariableInt("x")
@@ -70,21 +70,11 @@ def human_perception_human_locations(
 
 @pyflamegpu.agent_function
 def output_location(
-    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageSpatial2D
+    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageBruteForce
 ):
     message_out.setVariableInt("id", pyflamegpu.getID())
     message_out.setVariableInt("x", pyflamegpu.getVariableInt("x"))
     message_out.setVariableInt("y", pyflamegpu.getVariableInt("y"))
-
-
-@pyflamegpu.agent_function
-def output_location_and_type(
-    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageSpatial2D
-):
-    message_out.setVariableInt("id", pyflamegpu.getID())
-    message_out.setVariableInt("x", pyflamegpu.getVariableInt("x"))
-    message_out.setVariableInt("y", pyflamegpu.getVariableInt("y"))
-    message_out.setVariableInt("type", pyflamegpu.getVariableInt("type"))
 
 
 def make_human(model):
@@ -101,15 +91,15 @@ def make_human(model):
     human.newVariableArrayInt("closest_resource_y", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableInt("is_crowded")
     # analysis data
-    human.newVariableArrayInt("ana_last_resource_location", 2, [0, 0])
+    human.newVariableArrayInt("ana_last_resource_location", 2, [-1, -1])
     return human
 
 
 def make_resource(model):
     resource = model.newAgent("resource")
-    resource.newVariableInt("x")
-    resource.newVariableInt("y")
-    resource.newVariableInt("type")
+    resource.newVariableInt("x", 0)
+    resource.newVariableInt("y", 0)
+    resource.newVariableInt("type", 0)
     return resource
 
 
@@ -141,12 +131,14 @@ def make_simulation(
     def make_location_message(
         model: pyflamegpu.ModelDescription, name: str
     ):  # -> pyflamegpu.MessageDescription:
-        message = model.newMessageSpatial2D(name)
+        message = model.newMessageBruteForce(name)
         # XXX: setRadius: if not divided by 2, messages wrap around the borders and occur multiple times
-        message.setRadius(grid_size / 2)
-        message.setMin(0, 0)
-        message.setMax(grid_size, grid_size)
+        # message.setRadius(1)
+        # message.setMin(0, 0)
+        # message.setMax(grid_size, grid_size)
         message.newVariableID("id")
+        message.newVariableInt("x")
+        message.newVariableInt("y")
         return message
 
     resource_msg = make_location_message(model, "resource_location")
@@ -170,7 +162,9 @@ def make_simulation(
 
     # layer 1: location message output
     resource_output_location_description = make_agent_function(
-        ctx.resource, "output_location", py_fn=output_location_and_type
+        ctx.resource,
+        "output_location_and_type",
+        cuda_fn_file="agent_fn/output_resource_location.cu",
     )
     resource_output_location_description.setMessageOutput("resource_location")
     human_output_location_description = make_agent_function(
@@ -203,6 +197,13 @@ def make_simulation(
     l1 = model.newLayer("layer 1: location message output")
     l1.addAgentFunction(resource_output_location_description)
     l1.addAgentFunction(human_output_location_description)
+    model.newLayer("layer 1.X: XXX: tmp debug").addAgentFunction(
+        make_agent_function(
+            ctx.resource,
+            "tmp_debug",
+            cuda_fn_file="agent_fn/tmp_debug.cu",  # py_fn=output_location_and_type
+        )
+    )
     l2 = model.newLayer("layer 2.0: perception: resources")
     l2.addAgentFunction(human_perception_resource_locations_description)
     model.newLayer("layer 2.1: perception: humans").addAgentFunction(

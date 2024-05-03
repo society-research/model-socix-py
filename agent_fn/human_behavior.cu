@@ -53,6 +53,10 @@ FLAMEGPU_DEVICE_FUNCTION void printAction(int a) {
     }
 }
 
+FLAMEGPU_DEVICE_FUNCTION float distance(int x, int y, int xo, int yo) {
+    return sqrt(float((x - xo) * (x - xo) + (y - yo) * (y - yo)));
+}
+
 FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::MessageNone) {
     float ap = FLAMEGPU->getVariable<float>("actionpotential");
     int x = FLAMEGPU->getVariable<int>("x");
@@ -96,9 +100,9 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_x", resource_type);
         int resource_y =
             FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_y", resource_type);
-        printf("collecting x=%d, y=%d", resource_x, resource_y);
-        FLAMEGPU->setVariable<int, 2>("ana_last_resource_location", 0, resource_x);
-        FLAMEGPU->setVariable<int, 2>("ana_last_resource_location", 1, resource_y);
+        // printf("collecting x=%d, y=%d\n", resource_x, resource_y);
+        FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 0, resource_x);
+        FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 1, resource_y);
     };
     auto move_to_closest_resource = [&](int resource_type) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
@@ -108,10 +112,14 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_y", resource_type);
         int dx = abs((x - closest_x));
         int dy = abs((y - closest_y));
+        int step_x = (closest_x - x) / dx;
+        int step_y = (closest_y - y) / dy;
+        // if (distance(x + step_x, y, closest_x, closest_y) < distance(x, y + step_y, closest_x,
+        // closest_y)) {
         if (dx > dy) {
-            x = (x + ((closest_x - x) / dx));
+            x += step_x;
         } else {
-            y = (y + ((closest_y - y) / dy));
+            y += step_y;
         }
     };
     auto rest = [&]() {
@@ -173,7 +181,7 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
         }
     }
     int selected_action = findMax(scores, Action::EOF);
-    // printAction(selected_action);
+    printAction(selected_action);
     switch (selected_action) {
     case Action::RandomWalk:
         random_walk();
