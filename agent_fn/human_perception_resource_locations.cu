@@ -20,7 +20,6 @@ FLAMEGPU_AGENT_FUNCTION(resource_locations, flamegpu::MessageBruteForce, flamegp
         int resource_y = resource.getVariable<int>("y");
         float d = vec2Length((agent_x - resource_x), (agent_y - resource_y));
         if (d < closest_resource_distance[resource_type]) {
-            // printf("{resource[%d, %d]}, ", resource_x, resource_y);
             closest_resource_distance[resource_type] = d;
             closest_resource_x[resource_type] = resource_x;
             closest_resource_y[resource_type] = resource_y;

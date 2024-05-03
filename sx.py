@@ -128,14 +128,8 @@ def make_simulation(
             raise RuntimeError("unknown environment variable type")
     env.newPropertyInt("GRID_SIZE", grid_size)
 
-    def make_location_message(
-        model: pyflamegpu.ModelDescription, name: str
-    ):  # -> pyflamegpu.MessageDescription:
+    def make_location_message(model: pyflamegpu.ModelDescription, name: str):
         message = model.newMessageBruteForce(name)
-        # XXX: setRadius: if not divided by 2, messages wrap around the borders and occur multiple times
-        # message.setRadius(1)
-        # message.setMin(0, 0)
-        # message.setMax(grid_size, grid_size)
         message.newVariableID("id")
         message.newVariableInt("x")
         message.newVariableInt("y")
@@ -197,13 +191,6 @@ def make_simulation(
     l1 = model.newLayer("layer 1: location message output")
     l1.addAgentFunction(resource_output_location_description)
     l1.addAgentFunction(human_output_location_description)
-    model.newLayer("layer 1.X: XXX: tmp debug").addAgentFunction(
-        make_agent_function(
-            ctx.resource,
-            "tmp_debug",
-            cuda_fn_file="agent_fn/tmp_debug.cu",  # py_fn=output_location_and_type
-        )
-    )
     l2 = model.newLayer("layer 2.0: perception: resources")
     l2.addAgentFunction(human_perception_resource_locations_description)
     model.newLayer("layer 2.1: perception: humans").addAgentFunction(

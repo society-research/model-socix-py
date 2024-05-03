@@ -298,12 +298,10 @@ def test_solve_ot_problem(name, pos_source, pos_target):
     simulation.SimulationConfig().random_seed = seed
     resources = pyflamegpu.AgentVector(ctx.resource, len(pos_source) + len(pos_target))
     for i, p in enumerate(pos_source):
-        print(f"creating resource[t=0] @ {p} ({int(p[0])}, {int(p[1])})")
         resources[i].setVariableInt("x", int(p[0]))
         resources[i].setVariableInt("y", int(p[1]))
         resources[i].setVariableInt("type", 0)
     for i, p in enumerate(pos_target):
-        print(f"creating resource[t=1] @ {p} ({int(p[0])}, {int(p[1])})")
         resources[i + len(pos_source)].setVariableInt("x", int(p[0]))
         resources[i + len(pos_source)].setVariableInt("y", int(p[1]))
         resources[i + len(pos_source)].setVariableInt("type", 1)
