@@ -35,7 +35,7 @@ C = ostruct.OpenStruct(
     # amount of hunger a single consumed resource restores
     HUNGER_PER_RESOURCE_CONSUMPTION=8,
     # amount of hunger when a human starves to death
-    HUNGER_STARVED_TO_DEATH=30,
+    HUNGER_STARVED_TO_DEATH=300,
 )
 # after this amount of hunger a human chooses to eat if possible
 C.HUNGER_TO_TRIGGER_CONSUMPTION = C.HUNGER_PER_RESOURCE_CONSUMPTION
