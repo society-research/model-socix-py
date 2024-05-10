@@ -30,4 +30,4 @@ def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocatio
             x = x[0]
             y = y[0]
             cost[x, y] += 1
-    return cost
+    return cost / np.sum(cost)

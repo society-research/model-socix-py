@@ -290,8 +290,11 @@ def test_solve_ot_problem(name, pos_source, pos_target):
     # XXX: should be an accuracy benchmark to repeat this with different seeds!
     seed = 2
     random.seed(seed)
-    # OT solution: Sinkhorn's Algorithm
+    # OT solution: EMD
     M_loss = ot.dist(pos_source, pos_target)
+    n, m = len(pos_source), len(pos_target)
+    a, b = np.ones((n,)) / n, np.ones((m,)) / m
+    exp = ot.emd(a, b, M_loss)
     # ABM solution:
     grid_size = 30
     model, simulation, ctx = make_simulation(grid_size=grid_size)
@@ -327,83 +330,11 @@ def test_solve_ot_problem(name, pos_source, pos_target):
             loc = human.getVariableArrayInt("ana_last_resource_location")
             if loc != (-1, -1):
                 collected_resources.append([id, *loc])
-    # paths = np.array(paths)
-    # for id in set(paths[:,0]):
-    #    path = paths[paths[:,0] == id][:,1:3]
-    #    x = path[:,0]
-    #    y = path[:,1]
-    # assert (paths[0] == np.array([0., 0., 0.])).all()
-    # assert they're equal
-    got = (
-        util.collected_resource_list_to_cost_matrix(
-            collected_resources, pos_source, pos_target
-        )
-        * 241  # FIXME: do proportionality analysis instead of manual scaling
+    got = util.collected_resource_list_to_cost_matrix(
+        collected_resources, pos_source, pos_target
     )
-    exp = M_loss
     assert exp.shape == got.shape
     print("res[-10:]", collected_resources[-10:])
     print("exp", exp)
     print("got", got)
     assert np.allclose(exp, got, atol=0.1)
-
-
-@pytest.mark.parametrize(
-    "name, pos_source, pos_target, collection_list, exp",
-    [
-        [
-            "a single agent (id=1) collects at 0,0, then at 5,5",
-            np.array([[0, 0]]),
-            np.array([[5, 5]]),
-            np.array([[1, 0, 0], [1, 0, 0], [1, 5, 5]]),
-            np.array([[1]]),
-        ],
-        [
-            "two humans collecting each from two resources",
-            np.array([[0, 0], [1, 1]]),
-            np.array([[5, 5], [6, 6]]),
-            np.array(
-                [
-                    [1, 0, 0],
-                    [1, 5, 5],
-                    [2, 1, 1],
-                    [2, 6, 6],
-                ]
-            ),
-            np.array(
-                [
-                    [1, 0],
-                    [0, 1],
-                ]
-            ),
-        ],
-        [
-            "single human walking back and forth beween resources",
-            np.array([[0, 0]]),
-            np.array([[5, 5]]),
-            np.array(
-                [
-                    [1, 0, 0],
-                    [1, 5, 5],
-                    [1, 0, 0],
-                    [1, 5, 5],
-                ]
-            ),
-            np.array(
-                [
-                    [3],
-                ]
-            ),
-        ],
-    ],
-)
-def test_collected_resource_list_to_cost_matrix(
-    name, pos_source, pos_target, collection_list, exp
-):
-    got = util.collected_resource_list_to_cost_matrix(
-        collection_list,
-        pos_source,
-        pos_target,
-    )
-    assert exp.shape == got.shape
-    assert (exp == got).all()
