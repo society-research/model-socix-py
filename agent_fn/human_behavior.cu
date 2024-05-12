@@ -58,7 +58,7 @@ FLAMEGPU_DEVICE_FUNCTION float distance(int x, int y, int xo, int yo) {
     return sqrt(float((x - xo) * (x - xo) + (y - yo) * (y - yo)));
 }
 
-FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::MessageNone) {
+FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::MessageBucket) {
     float ap = FLAMEGPU->getVariable<float>("actionpotential");
     int x = FLAMEGPU->getVariable<int>("x");
     int y = FLAMEGPU->getVariable<int>("y");
@@ -101,9 +101,13 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_x", resource_type);
         int resource_y =
             FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_y", resource_type);
+        auto resource_id =
+            FLAMEGPU->getVariable<flamegpu::id_t, N_RESOURCE_TYPES>("closest_resource_id", resource_type);
         // printf("collecting x=%d, y=%d\n", resource_x, resource_y);
         FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 0, resource_x);
         FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 1, resource_y);
+        FLAMEGPU->message_out.setVariable<int>("amount", 1);
+        FLAMEGPU->message_out.setKey(resource_id); // bucket of resource that is collected
     };
     auto move_to_closest_resource = [&](int resource_type) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");

@@ -14,6 +14,9 @@ C = ostruct.OpenStruct(
     AGENT_COUNT=64,
     # amount of different resource types
     N_RESOURCE_TYPES=2,
+    # a resource is depleted after this amount of collections, and needs some
+    # time to regenerate
+    RESOURCE_DEPLETED_AFTER_COLLECTIONS=5,
     # default amount of action potential (AP)
     AP_DEFAULT=1.0,
     # AP needed to collect a resource
@@ -89,6 +92,7 @@ def make_human(model):
     human.newVariableArrayFloat("closest_resource", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableArrayInt("closest_resource_x", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableArrayInt("closest_resource_y", C.N_RESOURCE_TYPES, [0, 0])
+    human.newVariableArrayInt("closest_resource_id", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableInt("is_crowded")
     # analysis data
     human.newVariableArrayInt("ana_last_resource_location", 2, [-1, -1])
@@ -100,6 +104,7 @@ def make_resource(model):
     resource.newVariableInt("x", 0)
     resource.newVariableInt("y", 0)
     resource.newVariableInt("type", 0)
+    resource.newVariableInt("amount", C.RESOURCE_DEPLETED_AFTER_COLLECTIONS)
     return resource
 
 
@@ -110,7 +115,20 @@ def vprint(*args, **kwargs):
 
 def make_simulation(
     grid_size=10,
+    max_resources=100,
 ) -> [pyflamegpu.ModelDescription, pyflamegpu.CUDASimulation, ostruct.OpenStruct]:
+    """Create s FLAMEGPU simulation with actors & messages defined, but no
+    created actors (agent vectors) set.
+
+    Parameters:
+        grid_size (int): border size of the 2D grid (square)
+        max_resources (int): maximum amount of resources that you promise to
+            add as agents! if adding more resource agents behavior is undefined
+
+    Returns: modelDescription, CUDASimulation, constants
+        modelDescription, CUDASimulation (flamegpu2 swig types)
+        constants (openstruct): containing all model parameters
+    """
     ctx = ostruct.OpenStruct()
     model = pyflamegpu.ModelDescription("socix")
     env = model.Environment()
@@ -138,6 +156,9 @@ def make_simulation(
     resource_msg = make_location_message(model, "resource_location")
     resource_msg.newVariableInt("type")
     make_location_message(model, "human_location")
+    resource_collection_msg = model.newMessageBucket("resource_collection")
+    resource_collection_msg.newVariableInt("amount")
+    resource_collection_msg.setBounds(0, max_resources)
     ctx.human = make_human(model)
     ctx.resource = make_resource(model)
 
@@ -184,7 +205,16 @@ def make_simulation(
         "human_behavior",
         cuda_fn_file="agent_fn/human_behavior.cu",
     )
+    human_behavior_description.setMessageOutput("resource_collection")
     human_behavior_description.setAllowAgentDeath(True)
+    # layer 4: environmental effects
+    resource_decay_description = make_agent_function(
+        ctx.resource,
+        "resource_decay",
+        cuda_fn_file="agent_fn/resource_decay.cu",
+    )
+    resource_decay_description.setMessageInput("resource_collection")
+    # resource_decay_description.setAllowAgentDeath(True)
 
     # Identify the root of execution
     # model.addExecutionRoot(resource_output_location_description)
@@ -197,6 +227,9 @@ def make_simulation(
         human_perception_human_locations_description
     )
     model.newLayer("layer 3: behavior").addAgentFunction(human_behavior_description)
+    model.newLayer("layer 4: environmental effects").addAgentFunction(
+        resource_decay_description
+    )
     # Add the step function to the model.
     # step_validation_fn = step_validation()
     # model.addStepFunction(step_validation_fn)

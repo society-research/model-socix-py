@@ -62,6 +62,34 @@ def test_collect_resource_success():
     )
 
 
+def test_collect_resource_depleted_after_multiple_collections():
+    model, simulation, ctx = make_simulation()
+    humans = pyflamegpu.AgentVector(ctx.human, 5)
+    for human in humans:
+        human.setVariableInt("x", 0)
+        human.setVariableInt("y", 0)
+        human.setVariableArrayInt("resources", (1, 0))
+        human.setVariableFloat("actionpotential", C.AP_DEFAULT)
+    resources = pyflamegpu.AgentVector(ctx.resource, 1)
+    resources[0].setVariableInt("x", 0)
+    resources[0].setVariableInt("y", 0)
+    simulation.setPopulationData(resources)
+    simulation.setPopulationData(humans)
+    simulation.step()
+    simulation.getPopulationData(humans)
+    assert humans.size() == 5
+    for human in humans:
+        assert human.getVariableArrayInt("resources") == (2, 0), "collected resource"
+    simulation.step()
+    simulation.getPopulationData(humans)
+    assert humans.size() == 5
+    for human in humans:
+        assert human.getVariableArrayInt("resources") == (
+            2,
+            0,
+        ), "no collected: resource depleted"
+
+
 def test_move_towards_resource_1d():
     model, simulation, ctx = make_simulation()
     humans = pyflamegpu.AgentVector(ctx.human, 1)

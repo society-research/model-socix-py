@@ -5,6 +5,7 @@
 FLAMEGPU_AGENT_FUNCTION(resource_locations, flamegpu::MessageBruteForce, flamegpu::MessageNone) {
     int agent_x = FLAMEGPU->getVariable<int>("x");
     int agent_y = FLAMEGPU->getVariable<int>("y");
+    int closest_resource_id[N_RESOURCE_TYPES];
     float closest_resource_distance[N_RESOURCE_TYPES];
     int closest_resource_x[N_RESOURCE_TYPES];
     int closest_resource_y[N_RESOURCE_TYPES];
@@ -15,11 +16,13 @@ FLAMEGPU_AGENT_FUNCTION(resource_locations, flamegpu::MessageBruteForce, flamegp
     }
     // printf("agent[%d,%d]\n", agent_x, agent_y);
     for (const auto &resource : FLAMEGPU->message_in) {
+        auto resource_id = resource.getVariable<flamegpu::id_t>("id");
         int resource_type = resource.getVariable<int>("type");
         int resource_x = resource.getVariable<int>("x");
         int resource_y = resource.getVariable<int>("y");
         float d = vec2Length((agent_x - resource_x), (agent_y - resource_y));
         if (d < closest_resource_distance[resource_type]) {
+            closest_resource_id[resource_type] = resource_id;
             closest_resource_distance[resource_type] = d;
             closest_resource_x[resource_type] = resource_x;
             closest_resource_y[resource_type] = resource_y;
@@ -32,5 +35,7 @@ FLAMEGPU_AGENT_FUNCTION(resource_locations, flamegpu::MessageBruteForce, flamegp
                                                      closest_resource_x[resource_type]);
         FLAMEGPU->setVariable<int, N_RESOURCE_TYPES>("closest_resource_y", resource_type,
                                                      closest_resource_y[resource_type]);
+        FLAMEGPU->setVariable<int, N_RESOURCE_TYPES>("closest_resource_id", resource_type,
+                                                     closest_resource_id[resource_type]);
     }
 }
