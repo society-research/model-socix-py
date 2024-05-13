@@ -17,6 +17,8 @@ C = ostruct.OpenStruct(
     # a resource is depleted after this amount of collections, and needs some
     # time to regenerate
     RESOURCE_DEPLETED_AFTER_COLLECTIONS=5,
+    # number of ticks after which a depleted resource is available again
+    RESOURCE_RESTORATION_TICKS=2,
     # default amount of action potential (AP)
     AP_DEFAULT=1.0,
     # AP needed to collect a resource
@@ -105,6 +107,7 @@ def make_resource(model):
     resource.newVariableInt("y", 0)
     resource.newVariableInt("type", 0)
     resource.newVariableInt("amount", C.RESOURCE_DEPLETED_AFTER_COLLECTIONS)
+    resource.newVariableInt("regrowth_timer", 0)
     return resource
 
 

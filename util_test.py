@@ -50,6 +50,24 @@ import numpy as np
                 ]
             ),
         ],
+        [
+            "human collects same resource at different locations",
+            np.array([[0, 0], [1, 1]]),
+            np.array([[5, 5]]),
+            np.array(
+                [
+                    [1, 0, 0],
+                    [1, 1, 1],
+                    [1, 5, 5],
+                ]
+            ),
+            np.array(
+                [
+                    [0.5],
+                    [0.5],
+                ]
+            ),
+        ],
     ],
 )
 def test_collected_resource_list_to_cost_matrix(
