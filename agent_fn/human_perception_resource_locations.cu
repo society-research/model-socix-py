@@ -16,6 +16,11 @@ FLAMEGPU_AGENT_FUNCTION(resource_locations, flamegpu::MessageBruteForce, flamegp
     }
     // printf("agent[%d,%d]\n", agent_x, agent_y);
     for (const auto &resource : FLAMEGPU->message_in) {
+        int resource_amount = resource.getVariable<int>("amount");
+        if (resource_amount <= 0) {
+            continue; // TODO: should probably add it as resource, but with amount to be accounted
+                      // for during GOAP-scoring
+        }
         auto resource_id = resource.getVariable<flamegpu::id_t>("id");
         int resource_type = resource.getVariable<int>("type");
         int resource_x = resource.getVariable<int>("x");

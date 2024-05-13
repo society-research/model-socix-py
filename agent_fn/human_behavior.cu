@@ -48,7 +48,7 @@ FLAMEGPU_DEVICE_FUNCTION void printAction(int id, int a) {
         break;
     case Action::EOF:
     default:
-        printf("%d->Action::EOF", id);
+        printf("%d->Action::EOF;", id);
         break;
     }
     // printf("\n");
@@ -101,8 +101,8 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_x", resource_type);
         int resource_y =
             FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_y", resource_type);
-        auto resource_id =
-            FLAMEGPU->getVariable<flamegpu::id_t, N_RESOURCE_TYPES>("closest_resource_id", resource_type);
+        auto resource_id = FLAMEGPU->getVariable<flamegpu::id_t, N_RESOURCE_TYPES>(
+            "closest_resource_id", resource_type);
         // printf("collecting x=%d, y=%d\n", resource_x, resource_y);
         FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 0, resource_x);
         FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 1, resource_y);
@@ -144,8 +144,7 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             return flamegpu::DEAD;
         }
         // TODO(skep): strictly speaking food consumption is behavior and should be scored below
-        // before executed
-        // TODO(skep): consume resources[1] as well!
+        // before being executed
         if (resources[0] != 0 && resources[1] != 0 &&
             hunger > FLAMEGPU->environment.getProperty<int>("HUNGER_TO_TRIGGER_CONSUMPTION")) {
             resources[0] -= 1;
@@ -153,6 +152,12 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             hunger -= FLAMEGPU->environment.getProperty<int>("HUNGER_PER_RESOURCE_CONSUMPTION");
         }
     }
+
+    // reset analysis data
+    FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 0, -1);
+    FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 1, -1);
+
+    // GOAP algorithm
     int scores[Action::EOF];
     memset(&scores, 0, Action::EOF * sizeof(int));
     scores[Action::Rest] = 1;

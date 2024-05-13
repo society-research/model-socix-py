@@ -72,7 +72,7 @@ def human_perception_human_locations(
 
 
 @pyflamegpu.agent_function
-def output_location(
+def human_location(
     message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageBruteForce
 ):
     message_out.setVariableInt("id", pyflamegpu.getID())
@@ -155,6 +155,7 @@ def make_simulation(
 
     resource_msg = make_location_message(model, "resource_location")
     resource_msg.newVariableInt("type")
+    resource_msg.newVariableInt("amount")
     make_location_message(model, "human_location")
     resource_collection_msg = model.newMessageBucket("resource_collection")
     resource_collection_msg.newVariableInt("amount")
@@ -183,7 +184,7 @@ def make_simulation(
     )
     resource_output_location_description.setMessageOutput("resource_location")
     human_output_location_description = make_agent_function(
-        ctx.human, "output_location", py_fn=output_location
+        ctx.human, "human_location", py_fn=human_location
     )
     human_output_location_description.setMessageOutput("human_location")
     # layer 2: perception
