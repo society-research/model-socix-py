@@ -119,9 +119,9 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
         int dy = abs((y - closest_y));
         int step_x = (closest_x - x) / dx;
         int step_y = (closest_y - y) / dy;
-        // if (distance(x + step_x, y, closest_x, closest_y) < distance(x, y + step_y, closest_x,
-        // closest_y)) {
-        if (dx > dy) {
+        float dist_after_x_step = vec2Dist(x + step_x, y, closest_x, closest_y);
+        float dist_after_y_step = vec2Dist(x, y + step_y, closest_x, closest_y);
+        if (dist_after_x_step < dist_after_y_step) {
             x += step_x;
         } else {
             y += step_y;

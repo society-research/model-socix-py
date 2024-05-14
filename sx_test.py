@@ -153,21 +153,22 @@ def test_move_towards_resource_2d():
     humans[0].setVariableFloat("actionpotential", C.AP_DEFAULT)
     resources = pyflamegpu.AgentVector(ctx.resource, 1)
     resources[0].setVariableInt("x", 3)
-    resources[0].setVariableInt("y", 3)
+    resources[0].setVariableInt("y", 6)
+    exp_path = [
+        [0, 1],
+        [0, 2],
+        [0, 3],
+        [1, 3],
+        [1, 4],
+        [1, 4],
+    ]
     simulation.setPopulationData(resources)
     simulation.setPopulationData(humans)
-    simulation.step()
-    simulation.getPopulationData(humans)
-    assert humans[0].getVariableInt("x") == 0
-    assert humans[0].getVariableInt("y") == 1
-    simulation.step()
-    simulation.getPopulationData(humans)
-    assert humans[0].getVariableInt("x") == 1
-    assert humans[0].getVariableInt("y") == 1
-    simulation.step()
-    simulation.getPopulationData(humans)
-    assert humans[0].getVariableInt("x") == 1
-    assert humans[0].getVariableInt("y") == 1
+    for step, exp_loc in enumerate(exp_path):
+        print(f"[{step}], loc:{exp_loc}")
+        simulation.step()
+        simulation.getPopulationData(humans)
+        assert [humans[0].getVariableInt("x"), humans[0].getVariableInt("y")] == exp_loc
     assert humans[0].getVariableArrayInt("resources") == (2, 0)
 
 

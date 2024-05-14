@@ -39,9 +39,9 @@ def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocatio
                 if x is None or y is None:
                     third = next(it)
                     x, y = get_resource_slot([first, third])
-                    cost[x, y] += 1 / 2
+                    cost[x, y] += 0.2
                     x, y = get_resource_slot([second, third])
-                    cost[x, y] += 1 / 2
+                    cost[x, y] += 0.8
                 else:
                     cost[x, y] += 1
             except StopIteration:
