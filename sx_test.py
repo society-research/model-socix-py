@@ -158,14 +158,16 @@ def test_move_towards_resource_2d():
         [0, 1],
         [0, 2],
         [0, 3],
-        [1, 3],
+        # [0, 4] and [1, 3] have equal euclidean distance to [3, 6], but our
+        # model is discrete and must make a deterministic choice
+        [0, 4],
         [1, 4],
         [1, 4],
     ]
     simulation.setPopulationData(resources)
     simulation.setPopulationData(humans)
     for step, exp_loc in enumerate(exp_path):
-        print(f"[{step}], loc:{exp_loc}")
+        print(f"[{step}] loc:{exp_loc}")
         simulation.step()
         simulation.getPopulationData(humans)
         assert [humans[0].getVariableInt("x"), humans[0].getVariableInt("y")] == exp_loc

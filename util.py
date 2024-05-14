@@ -18,10 +18,8 @@ def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocatio
             y = np.where((tgtLocations == path[0]).all(axis=1))[0]
         if len(x) == 0 or len(y) == 0:
             return None, None
-            # raise RuntimeError(
-            #    f"path={path} not found in srcLocations={srcLocations} or tgtLocations={tgtLocations}"
-            # )
-        return x[0], y[0]
+        x, y = x[0], y[0]
+        return x, y
 
     for id, events in agents.items():
         it = iter(events)
@@ -39,8 +37,12 @@ def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocatio
                 if x is None or y is None:
                     third = next(it)
                     x, y = get_resource_slot([first, third])
+                    if x is None or y is None:
+                        continue
                     cost[x, y] += 0.2
                     x, y = get_resource_slot([second, third])
+                    if x is None or y is None:
+                        continue
                     cost[x, y] += 0.8
                 else:
                     cost[x, y] += 1
