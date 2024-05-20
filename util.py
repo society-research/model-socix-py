@@ -2,7 +2,7 @@ import numpy as np
 
 
 def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocations):
-    cost = np.zeros((len(srcLocations), len(tgtLocations)))
+    cost = np.zeros((len(srcLocations), len(tgtLocations)), dtype="float")
     agents = {}
     for event in collections:
         event = np.array(event)
@@ -21,31 +21,45 @@ def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocatio
         x, y = x[0], y[0]
         return x, y
 
+    def is_valid(path):
+        x, y = get_resource_slot(path)
+        if x is not None and y is not None:
+            return True
+        return False
+
     for id, events in agents.items():
         it = iter(events)
+        prefix = None
         while True:
+            src, tgt = [], []
+            if prefix is not None:
+                src.append(prefix)
+                prefix = None
             try:
-                first = next(it)
-                second = next(it)
-                if (first == second).all():
-                    first = second
-                    second = next(it)
-                if (first == second).all():
-                    continue
-                x, y = get_resource_slot([first, second])
-                # TODO: extend to arbitrary path lengths
-                if x is None or y is None:
-                    third = next(it)
-                    x, y = get_resource_slot([first, third])
-                    if x is None or y is None:
-                        continue
-                    cost[x, y] += 0.2
-                    x, y = get_resource_slot([second, third])
-                    if x is None or y is None:
-                        continue
-                    cost[x, y] += 0.8
-                else:
-                    cost[x, y] += 1
+                if len(src) == 0:
+                    src.append(next(it))
+                tgt.append(next(it))
+                while (src[0] == tgt[-1]).all():
+                    src.append(tgt.pop())
+                    tgt.append(next(it))
+                while not is_valid([src[0], tgt[-1]]):
+                    src.append(tgt.pop())
+                    tgt.append(next(it))
+                stop = False
+                while is_valid([src[0], tgt[-1]]):
+                    try:
+                        tgt.append(next(it))
+                    except StopIteration:
+                        stop = True
+                        break
+                if not stop:
+                    prefix = tgt.pop()
+                for i in range(len(src)):
+                    for j in range(len(tgt)):
+                        x, y = get_resource_slot([src[i], tgt[j]])
+                        cost[x, y] += 1 / (len(src) * len(tgt))
+                if stop:
+                    break
             except StopIteration:
                 break
     if np.sum(cost) == 0:

@@ -51,7 +51,7 @@ import numpy as np
             ),
         ],
         [
-            "human collects same resource at different locations",
+            "human collects same resource at different locations: multiple sources",
             np.array([[0, 0], [1, 1]]),
             np.array([[5, 5]]),
             np.array(
@@ -63,8 +63,83 @@ import numpy as np
             ),
             np.array(
                 [
-                    [0.2],
-                    [0.8],
+                    [0.5],
+                    [0.5],
+                ]
+            ),
+        ],
+        [
+            "human collects same resource at different locations: >2 steps between sources",
+            np.array([[0, 0], [1, 1], [2, 2]]),
+            np.array([[5, 5]]),
+            np.array(
+                [
+                    [1, 0, 0],
+                    [1, 1, 1],
+                    [1, 2, 2],
+                    [1, 5, 5],
+                ]
+            ),
+            np.array(
+                [
+                    [1 / 3],
+                    [1 / 3],
+                    [1 / 3],
+                ]
+            ),
+        ],
+        [
+            "human collects same resource at different locations: multiple targets",
+            np.array([[0, 0]]),
+            np.array([[5, 5], [6, 6]]),
+            np.array(
+                [
+                    [1, 0, 0],
+                    [1, 5, 5],
+                    [1, 6, 6],
+                ]
+            ),
+            np.array(
+                [
+                    [0.5, 0.5],
+                ]
+            ),
+        ],
+        [
+            "human collects same resource at different locations: grid",
+            np.array([[0, 0], [1, 1]]),
+            np.array([[5, 5], [6, 6]]),
+            np.array(
+                [
+                    [1, 0, 0],
+                    [1, 1, 1],
+                    [1, 5, 5],
+                    [1, 6, 6],
+                ]
+            ),
+            np.array(
+                [
+                    [0.25, 0.25],
+                    [0.25, 0.25],
+                ]
+            ),
+        ],
+        [
+            "2 paths after one another",
+            np.array([[0, 0], [1, 1]]),
+            np.array([[5, 5], [6, 6]]),
+            np.array(
+                [
+                    [1, 0, 0],
+                    [1, 5, 5],
+                    [1, 1, 1],
+                    [1, 6, 6],
+                ]
+            ),
+            np.array(
+                [
+                    [0.5, 0],
+                    [0, 0.5],
                 ]
             ),
         ],

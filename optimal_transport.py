@@ -1,5 +1,6 @@
 import random
 
+import ostruct
 import numpy as np
 from matplotlib import pyplot as plt
 import ot
@@ -36,13 +37,11 @@ def solve_ot_with_sinkhorn(pos_source, pos_target, SCALE=5, jiggle_factor=0.01):
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
     regularization = 1e-1
     sinkhorn = ot.sinkhorn(a, b, M_loss_jiggled, regularization)
-    # print(f"sinkhorn:\n{sinkhorn}")
     # plot_ot(pos_source_j * SCALE, pos_target_j * SCALE, sinkhorn, "sinkhorn")
 
     # EMD -- Earth Movers Distance - works fine
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
     emd = ot.emd(a, b, M_loss)
-    # print(f"EMD:\n{emd}")
     # plot_ot(pos_source, pos_target, emd, "EMD")
 
     return sinkhorn, {"emd": emd, "loss": M_loss, "loss_jiggled": M_loss_jiggled}
@@ -85,26 +84,36 @@ def solve_ot_with_abm(
         simulation.setPopulationData(av)
     paths = []
     collected_resources = []
+    alive_humans = []
+    avg_resources = []
     for step in range(steps):
         simulation.step()
         simulation.getPopulationData(humans)
+        alive_humans.append(len(humans))
         if len(humans) == 0:
             print("[WARNING] All humans are dead. Simulation stops early.")
             break
-        if step % (steps / 10) == (steps / 10) - 1:
-            print(f"[{step}] humans={len(humans)}")
+        avg_resources.append(np.array([0, 0], dtype="float64"))
         for human in humans:
             id = human.getID()
+            res = np.array(human.getVariableArrayInt("resources"))
+            avg_resources[-1] += res
             x, y = human.getVariableInt("x"), human.getVariableInt("y")
             paths.append([id, x, y])
             loc = human.getVariableArrayInt("ana_last_resource_location")
             if loc != (-1, -1):
                 collected_resources.append([id, *loc])
+        avg_resources[-1] /= len(humans)
     return (
         util.collected_resource_list_to_cost_matrix(
             collected_resources, pos_source, pos_target
         ),
-        paths,
+        {
+            "paths": paths,
+            "alive_humans": alive_humans,
+            "avg_resources": avg_resources,
+            "constants": C,
+        },
     )
 
 
@@ -144,24 +153,114 @@ def plot_paths_4x4(pos_source, pos_target, paths):
     plt.show()
 
 
-def plot_cost(M, extra=""):
-    plt.figure(2)
-    plt.imshow(M, interpolation="nearest")
+def plot_ot(meta, xs, xt, G, what, extra=""):
+    plt.figure(figsize=(18, 6))  # Adjust the figure size as needed
+    # Plot 1: Cost matrix M
+    plt.subplot(1, 3, 1)
+    plt.imshow(meta["loss"], interpolation="nearest")
     plt.title(f"Cost matrix M{extra}")
-    plt.show()
-
-
-def plot_ot(xs, xt, G, what):
-    plt.figure(figsize=(12, 6))  # Adjust the figure size as needed
-    plt.subplot(1, 2, 1)
+    # Plot 2: OT matrix G
+    plt.subplot(1, 3, 2)
     plt.imshow(G, interpolation="nearest")
     plt.title(f"OT matrix: {what}")
-    plt.subplot(1, 2, 2)
+    # Plot 3: OT matrix G with samples
+    plt.subplot(1, 3, 3)
     ot.plot.plot2D_samples_mat(xs, xt, G, color=[0.5, 0.5, 1])
     plt.plot(xs[:, 0], xs[:, 1], "+b", label="Source samples")
     plt.plot(xt[:, 0], xt[:, 1], "xr", label="Target samples")
     plt.legend(loc=0)
     plt.title(f"OT matrix: {what} with samples")
+    plt.tight_layout()  # Adjust subplot parameters to give specified padding
+    plt.show()
+
+
+# def plot_abm(meta, xs, xt, G, what, extra=""):
+#    plt.figure(figsize=(18, 6))  # Adjust the figure size as needed
+#    # Plot 1: ABM metrics
+#    plt.subplot(1, 3, 1)
+#    humans = np.array([i for i in enumerate(meta["alive_humans"])])
+#    x, y = humans[:, 0], humans[:, 1]
+#    plt.plot(x, y)
+#    plt.ylabel("no. humans alive / 1")
+#    plt.ylim(top=np.max(y) * 1.05)
+#    plt.xlabel("step / 1")
+#    plt.title(f"Alive humans")
+#    # Plot 2: OT matrix G
+#    plt.subplot(1, 3, 2)
+#    plt.imshow(G, interpolation="nearest")
+#    plt.title(f"OT matrix: {what}")
+#    # Plot 3: OT matrix G with samples
+#    plt.subplot(1, 3, 3)
+#    ot.plot.plot2D_samples_mat(xs, xt, G, color=[0.5, 0.5, 1])
+#    plt.plot(xs[:, 0], xs[:, 1], "+b", label="Source samples")
+#    plt.plot(xt[:, 0], xt[:, 1], "xr", label="Target samples")
+#    plt.legend(loc=0)
+#    plt.title(f"OT matrix: {what} with samples")
+#    plt.tight_layout()  # Adjust subplot parameters to give specified padding
+#    plt.show()
+
+
+def plot_abm(meta, xs, xt, G, config, extra=""):
+    fig, axs = plt.subplots(2, 3, figsize=(18, 12))  # Create a 2x3 grid of subplots
+    # Plot 1: ABM metrics
+    humans = np.array([i for i in enumerate(meta["alive_humans"])])
+    x, y = humans[:, 0], humans[:, 1]
+    ax = axs[0, 0]
+    ax.plot(x, y, "b-", label="Humans Alive")
+    ax.set_ylabel("no. humans alive / 1")
+    ax.set_ylim(top=np.max(y) * 1.05)
+    ax.set_xlabel("step / 1")
+    ax.set_title("Alive humans")
+    ax.legend(loc="upper left")
+    # Plot 2: OT matrix G
+    ax = axs[0, 1]
+    ax.imshow(G, interpolation="nearest")
+    ax.set_title(f"OT matrix: ABM")
+    # Plot 3: OT matrix G with samples
+    ax = axs[0, 2]
+    plt.subplot(2, 3, 3)  # 2x3 plots, this is no 3 of 6 (=2x3)
+    ot.plot.plot2D_samples_mat(xs, xt, G, color=[0.5, 0.5, 1])
+    ax.plot(xs[:, 0], xs[:, 1], "+b", label="Source samples")
+    ax.plot(xt[:, 0], xt[:, 1], "xr", label="Target samples")
+    ax.legend(loc=0)
+    ax.set_title(f"OT matrix: ABM with samples")
+    # Additional plot in the second row, first column
+    ax = axs[1, 0]
+    res = np.array(
+        [[step, r1, r2] for step, [r1, r2] in enumerate(meta["avg_resources"])]
+    )
+    ax.plot(res[:, 0], res[:, 1], "r-", label="average resource[type=0]")
+    ax.plot(res[:, 0], res[:, 2], "b-", label="average resource[type=1]")
+    ax.set_ylabel("Average resources per human")
+    ax.set_ylim(top=np.max([res[:, 1], res[:, 2]]) * 1.05)
+    ax.set_xlabel("step / 1")
+    ax.set_title("Average Resources per human (averaged over ticks)")
+    ax.legend(loc="upper left")
+    # Text field in the second row, second column
+    ax = axs[1, 1]
+    config = ostruct.OpenStruct(**config)
+    text = f"""ABM configuration:
+    n_humans                        {config.n_humans}
+    seed                            {config.seed}
+    resource_restoration_ticks      {config.resource_restoration_ticks}
+    hunger_starved_to_death         {config.hunger_starved_to_death}
+    n_humans_crowded                {config.n_humans_crowded}
+    steps                           {config.steps}
+
+    TODO: fitness of solution
+    """
+    ax.text(
+        0.5,
+        0.5,
+        text,
+        horizontalalignment="center",
+        verticalalignment="center",
+        fontsize=14,
+    )
+    ax.axis("off")  # Hide the axis
+    # Hide the unused second row, third column
+    ax = axs[1, 2]
+    ax.axis("off")
     plt.tight_layout()  # Adjust subplot parameters to give specified padding
     plt.show()
 
@@ -185,4 +284,30 @@ def generate_distributions(s=50, t=50, SCALE=5):
     xt[xt < 0] *= -1
     xs *= SCALE
     xt *= SCALE
-    return np.round(xs).astype("int"), np.round(xt).astype("int")
+    min, max = 1, 1
+    xs = np.round(xs).astype("int")
+    xt = np.round(xt).astype("int")
+    # TODO: enable unique distribution
+    # return _make_distrib_unique(xs, np.min(xs[:,0]), np.max(xs[:,1])), _make_distrib_unique(xt, np.min(xt[:,0]), np.max(xt[:,1]))
+    return xs, xt
+
+
+def _make_distrib_unique(x, min, max):
+    n = len(x)
+    x = np.unique(x, axis=0)
+    if n > len(x):
+        print(f"missing {n-len(x)} for requested size of {n} resources")
+        # np.append(x, [np.random.randint(min, max), np.random.randint(min, max)])
+    return x
+
+
+class Optimizer:
+    def __init__(self, **config):
+        self.config = ostruct.OpenStruct(**config)
+
+
+class HyperParameter:
+    def __init__(self, min=None, max=None, steps=None):
+        self.min = min
+        self.max = max
+        self.steps = steps

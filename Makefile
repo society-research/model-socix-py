@@ -11,7 +11,7 @@ test:
 	while true; do inotifywait -e modify,close_write,moved_to,move,create,delete $(shell find -maxdepth 2 -name '*.cu' -or -name '*.py'); pytest .; done
 .PHONY: test
 testv:
-	while true; do inotifywait -e modify,close_write,moved_to,move,create,delete $(shell find -maxdepth 2 -name '*.cu' -or -name '*.py'); pytest . -v; done
+	while true; do inotifywait -e modify,close_write,moved_to,move,create,delete $(shell find -maxdepth 2 -name '*.cu' -or -name '*.py'); pytest . -vv; done
 .PHONY: testv
 test-run:
 	while true; do inotifywait -e modify,close_write,moved_to,move,create,delete $(shell find -maxdepth 2 -name '*.cu' -or -name '*.py'); python sx.py -s 2; done
