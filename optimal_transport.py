@@ -25,7 +25,6 @@ def solve_ot_with_sinkhorn(pos_source, pos_target, SCALE=5, jiggle_factor=0.01):
     # NOTE: To apply sinkhorns algorithm the distributions must not have
     # resources at the exact same distances, thus locations are "jiggled" a bit.
     M_loss_jiggled = ot.dist(pos_source_j, pos_target_j)
-
     # plot_cost(M_loss)
     # plot_cost(M_loss_jiggled, extra="_jiggled")
 
@@ -153,19 +152,19 @@ def plot_paths_4x4(pos_source, pos_target, paths):
     plt.show()
 
 
-def plot_ot(meta, xs, xt, G, what, extra=""):
+def plot_ot(meta, xs, xt, solution, what, extra=""):
     plt.figure(figsize=(18, 6))  # Adjust the figure size as needed
     # Plot 1: Cost matrix M
     plt.subplot(1, 3, 1)
     plt.imshow(meta["loss"], interpolation="nearest")
     plt.title(f"Cost matrix M{extra}")
-    # Plot 2: OT matrix G
+    # Plot 2: OT matrix `solution`
     plt.subplot(1, 3, 2)
-    plt.imshow(G, interpolation="nearest")
+    plt.imshow(solution, interpolation="nearest")
     plt.title(f"OT matrix: {what}")
-    # Plot 3: OT matrix G with samples
+    # Plot 3: OT matrix `solution` with samples
     plt.subplot(1, 3, 3)
-    ot.plot.plot2D_samples_mat(xs, xt, G, color=[0.5, 0.5, 1])
+    ot.plot.plot2D_samples_mat(xs, xt, solution, color=[0.5, 0.5, 1])
     plt.plot(xs[:, 0], xs[:, 1], "+b", label="Source samples")
     plt.plot(xt[:, 0], xt[:, 1], "xr", label="Target samples")
     plt.legend(loc=0)
@@ -174,33 +173,42 @@ def plot_ot(meta, xs, xt, G, what, extra=""):
     plt.show()
 
 
-# def plot_abm(meta, xs, xt, G, what, extra=""):
-#    plt.figure(figsize=(18, 6))  # Adjust the figure size as needed
-#    # Plot 1: ABM metrics
-#    plt.subplot(1, 3, 1)
-#    humans = np.array([i for i in enumerate(meta["alive_humans"])])
-#    x, y = humans[:, 0], humans[:, 1]
-#    plt.plot(x, y)
-#    plt.ylabel("no. humans alive / 1")
-#    plt.ylim(top=np.max(y) * 1.05)
-#    plt.xlabel("step / 1")
-#    plt.title(f"Alive humans")
-#    # Plot 2: OT matrix G
-#    plt.subplot(1, 3, 2)
-#    plt.imshow(G, interpolation="nearest")
-#    plt.title(f"OT matrix: {what}")
-#    # Plot 3: OT matrix G with samples
-#    plt.subplot(1, 3, 3)
-#    ot.plot.plot2D_samples_mat(xs, xt, G, color=[0.5, 0.5, 1])
-#    plt.plot(xs[:, 0], xs[:, 1], "+b", label="Source samples")
-#    plt.plot(xt[:, 0], xt[:, 1], "xr", label="Target samples")
-#    plt.legend(loc=0)
-#    plt.title(f"OT matrix: {what} with samples")
-#    plt.tight_layout()  # Adjust subplot parameters to give specified padding
-#    plt.show()
+# TODO: should penalize every single row (and column) that does not sum up to
+#       1/(len(rows) | 1/(len(columns) respectively, since this means it is not
+#       saturated, i.e. mines/factories are not working 100%
+def loss(M_cost, M_solution):
+    """loss is defined as the cost of transport from xs[i] to xt[i] (i.e.
+    M_cost[i,j] multiplied with the amount (M_sol[i,j])
+    """
+    l = np.sum(M_cost * M_solution.T)
+    # penalty for avoiding a source/target spot
+    avg_dist = np.mean(M_cost)
+    missing_sources = np.sum(np.all(M_solution == 0, axis=1))  # rows
+    missing_targets = np.sum(np.all(M_solution == 0, axis=1))  # columns
+    missing = missing_sources + missing_targets
+    if missing > 0:
+        l += missing * avg_dist
+    return l
 
 
-def plot_abm(meta, xs, xt, G, config, extra=""):
+def compare(xs, xt, solution_abm, solution_ot):
+    """compare returns a comparison object with various metrics comparing the
+    input solutions.
+
+    Returns
+    -------
+        comparison (OpenStruct)
+            .loss_ot        loss of the OT solution
+            .loss_abm       loss of the ABM solution
+    """
+    comparison = ostruct.OpenStruct()
+    M_loss = ot.dist(xs, xt)
+    comparison.loss_ot = loss(M_loss, solution_ot)
+    comparison.loss_abm = loss(M_loss, solution_abm)
+    return comparison
+
+
+def plot_abm(meta, xs, xt, solution, config, comparison):
     fig, axs = plt.subplots(2, 3, figsize=(18, 12))  # Create a 2x3 grid of subplots
     # Plot 1: ABM metrics
     humans = np.array([i for i in enumerate(meta["alive_humans"])])
@@ -212,14 +220,14 @@ def plot_abm(meta, xs, xt, G, config, extra=""):
     ax.set_xlabel("step / 1")
     ax.set_title("Alive humans")
     ax.legend(loc="upper left")
-    # Plot 2: OT matrix G
+    # Plot 2: OT matrix `solution`
     ax = axs[0, 1]
-    ax.imshow(G, interpolation="nearest")
+    ax.imshow(solution, interpolation="nearest")
     ax.set_title(f"OT matrix: ABM")
-    # Plot 3: OT matrix G with samples
+    # Plot 3: OT matrix `solution` with samples
     ax = axs[0, 2]
     plt.subplot(2, 3, 3)  # 2x3 plots, this is no 3 of 6 (=2x3)
-    ot.plot.plot2D_samples_mat(xs, xt, G, color=[0.5, 0.5, 1])
+    ot.plot.plot2D_samples_mat(xs, xt, solution, color=[0.5, 0.5, 1])
     ax.plot(xs[:, 0], xs[:, 1], "+b", label="Source samples")
     ax.plot(xt[:, 0], xt[:, 1], "xr", label="Target samples")
     ax.legend(loc=0)
@@ -247,7 +255,8 @@ def plot_abm(meta, xs, xt, G, config, extra=""):
     n_humans_crowded                {config.n_humans_crowded}
     steps                           {config.steps}
 
-    TODO: fitness of solution
+    loss_ot                         {comparison.loss_ot}
+    loss_abm                        {comparison.loss_abm}
     """
     ax.text(
         0.5,
@@ -287,17 +296,24 @@ def generate_distributions(s=50, t=50, SCALE=5):
     min, max = 1, 1
     xs = np.round(xs).astype("int")
     xt = np.round(xt).astype("int")
-    # TODO: enable unique distribution
-    # return _make_distrib_unique(xs, np.min(xs[:,0]), np.max(xs[:,1])), _make_distrib_unique(xt, np.min(xt[:,0]), np.max(xt[:,1]))
-    return xs, xt
+    return _make_distrib_unique(xs), _make_distrib_unique(xt)
+    # return xs, xt
 
 
-def _make_distrib_unique(x, min, max):
-    n = len(x)
+def _make_distrib_unique(x):
+    orig_len = len(x)
     x = np.unique(x, axis=0)
-    if n > len(x):
-        print(f"missing {n-len(x)} for requested size of {n} resources")
-        # np.append(x, [np.random.randint(min, max), np.random.randint(min, max)])
+    min = np.array([np.min(x[:, 0]), np.min(x[:, 1])])
+    max = np.array([np.max(x[:, 0]), np.max(x[:, 1])])
+    if (min >= max).any():
+        max += 1
+    while orig_len > len(x):
+        x = np.append(
+            x,
+            [[np.random.randint(min[0], max[0]), np.random.randint(min[1], max[1])]],
+            axis=0,
+        )
+        x = np.unique(x, axis=0)
     return x
 
 
