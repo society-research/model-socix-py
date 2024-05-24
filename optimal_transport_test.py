@@ -53,5 +53,21 @@ def test_HyperParameter():
     p = solver.HyperParameter(min=1, max=10, steps=1)
 
 
-def test_Optimizer():
-    o = solver.Optimizer(n_humans=solver.HyperParameter(min=10, max=100, steps=5))
+def test_Optimizer_single_param():
+    o = solver.Optimizer(n_humans=solver.HyperParameter(min=10, max=12, steps=1))
+    it = o.all()
+    assert next(it).n_humans == 10
+    assert next(it).n_humans == 11
+
+    o = solver.Optimizer(n_humans=solver.HyperParameter(min=10, max=21, steps=5))
+    it = o.all()
+    assert next(it).n_humans == 10
+    assert next(it).n_humans == 15
+    assert next(it).n_humans == 20
+
+
+# def test_Optimizer_multiple_params():
+#    o = solver.Optimizer(n_humans=solver.HyperParameter(min=10, max=12, steps=1))
+#    it = o.all()
+#    assert next(it) == 10
+#    assert next(it) == 11

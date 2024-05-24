@@ -35,7 +35,7 @@ def solve_ot_with_sinkhorn(pos_source, pos_target, SCALE=5, jiggle_factor=0.01):
     # (equal distances that are common with integer locations on a small scale hinder convergence)
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
     regularization = 1e-1
-    sinkhorn = ot.sinkhorn(a, b, M_loss_jiggled, regularization)
+    sinkhorn = ot.sinkhorn(a, b, M_loss_jiggled, regularization, numItermax=10000)
     # plot_ot(pos_source_j * SCALE, pos_target_j * SCALE, sinkhorn, "sinkhorn")
 
     # EMD -- Earth Movers Distance - works fine
@@ -321,9 +321,18 @@ class Optimizer:
     def __init__(self, **config):
         self.config = ostruct.OpenStruct(**config)
 
+    def all(self):
+        for name, param in self.config.items():
+            for val in param.all():
+                yield ostruct.OpenStruct({name: val})
+
 
 class HyperParameter:
     def __init__(self, min=None, max=None, steps=None):
+        """Initialize with range [min, max) testing with step size steps."""
         self.min = min
         self.max = max
         self.steps = steps
+
+    def all(self):
+        return range(self.min, self.max, self.steps)

@@ -8,3 +8,4 @@ ipython
 matplotlib
 POT # -- optimal transport solvers
 jupyter
+optuna # hyper parameter optimization
