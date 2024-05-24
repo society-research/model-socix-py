@@ -1,6 +1,5 @@
 import sys
 import random
-import math
 import ostruct
 import pyflamegpu
 import pyflamegpu.codegen
@@ -15,6 +14,11 @@ C = ostruct.OpenStruct(
     AGENT_COUNT=64,
     # amount of different resource types
     N_RESOURCE_TYPES=2,
+    # a resource is depleted after this amount of collections, and needs some
+    # time to regenerate
+    RESOURCE_DEPLETED_AFTER_COLLECTIONS=5,
+    # number of ticks after which a depleted resource is available again
+    RESOURCE_RESTORATION_TICKS=2,
     # default amount of action potential (AP)
     AP_DEFAULT=1.0,
     # AP needed to collect a resource
@@ -36,7 +40,7 @@ C = ostruct.OpenStruct(
     # amount of hunger a single consumed resource restores
     HUNGER_PER_RESOURCE_CONSUMPTION=8,
     # amount of hunger when a human starves to death
-    HUNGER_STARVED_TO_DEATH=30,
+    HUNGER_STARVED_TO_DEATH=300,
 )
 # after this amount of hunger a human chooses to eat if possible
 C.HUNGER_TO_TRIGGER_CONSUMPTION = C.HUNGER_PER_RESOURCE_CONSUMPTION
@@ -49,13 +53,13 @@ C.AP_REDUCTION_BY_CROWDING = C.AP_DEFAULT / 10
 
 @pyflamegpu.agent_function
 def human_perception_human_locations(
-    message_in: pyflamegpu.MessageSpatial2D, message_out: pyflamegpu.MessageNone
+    message_in: pyflamegpu.MessageBruteForce, message_out: pyflamegpu.MessageNone
 ):
     id = pyflamegpu.getID()
     human_x = pyflamegpu.getVariableInt("x")
     human_y = pyflamegpu.getVariableInt("y")
     close_humans = 0
-    for human in message_in.wrap(human_x, human_y):
+    for human in message_in:
         if human.getVariableInt("id") == id:
             continue
         other_human_x = human.getVariableInt("x")
@@ -70,22 +74,12 @@ def human_perception_human_locations(
 
 
 @pyflamegpu.agent_function
-def output_location(
-    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageSpatial2D
+def human_location(
+    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageBruteForce
 ):
     message_out.setVariableInt("id", pyflamegpu.getID())
     message_out.setVariableInt("x", pyflamegpu.getVariableInt("x"))
     message_out.setVariableInt("y", pyflamegpu.getVariableInt("y"))
-
-
-@pyflamegpu.agent_function
-def output_location_and_type(
-    message_in: pyflamegpu.MessageNone, message_out: pyflamegpu.MessageSpatial2D
-):
-    message_out.setVariableInt("id", pyflamegpu.getID())
-    message_out.setVariableInt("x", pyflamegpu.getVariableInt("x"))
-    message_out.setVariableInt("y", pyflamegpu.getVariableInt("y"))
-    message_out.setVariableInt("type", pyflamegpu.getVariableInt("type"))
 
 
 def make_human(model):
@@ -100,26 +94,44 @@ def make_human(model):
     human.newVariableArrayFloat("closest_resource", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableArrayInt("closest_resource_x", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableArrayInt("closest_resource_y", C.N_RESOURCE_TYPES, [0, 0])
+    human.newVariableArrayInt("closest_resource_id", C.N_RESOURCE_TYPES, [0, 0])
     human.newVariableInt("is_crowded")
+    # analysis data
+    human.newVariableArrayInt("ana_last_resource_location", 2, [-1, -1])
     return human
 
 
 def make_resource(model):
     resource = model.newAgent("resource")
-    resource.newVariableInt("x")
-    resource.newVariableInt("y")
-    resource.newVariableInt("type")
+    resource.newVariableInt("x", 0)
+    resource.newVariableInt("y", 0)
+    resource.newVariableInt("type", 0)
+    resource.newVariableInt("amount", C.RESOURCE_DEPLETED_AFTER_COLLECTIONS)
+    resource.newVariableInt("regrowth_timer", 0)
     return resource
 
 
 def vprint(*args, **kwargs):
-    if "-v" in sys.argv:
+    if "-vv" in sys.argv:
         print(*args, **kwargs)
 
 
 def make_simulation(
     grid_size=10,
+    max_resources=100,
 ) -> [pyflamegpu.ModelDescription, pyflamegpu.CUDASimulation, ostruct.OpenStruct]:
+    """Create s FLAMEGPU simulation with actors & messages defined, but no
+    created actors (agent vectors) set.
+
+    Parameters:
+        grid_size (int): border size of the 2D grid (square)
+        max_resources (int): maximum amount of resources that you promise to
+            add as agents! if adding more resource agents behavior is undefined
+
+    Returns: modelDescription, CUDASimulation, constants
+        modelDescription, CUDASimulation (flamegpu2 swig types)
+        constants (openstruct): containing all model parameters
+    """
     ctx = ostruct.OpenStruct()
     model = pyflamegpu.ModelDescription("socix")
     env = model.Environment()
@@ -127,30 +139,30 @@ def make_simulation(
         if key[0] == "_":
             continue
         val = C[key]
-        if type(val) == float:
+        if type(val) is float:
             vprint(f"env[{key},float] = {val}")
             env.newPropertyFloat(key, val)
-        elif type(val) == int:
+        elif type(val) is int:
             vprint(f"env[{key},int] = {val}")
             env.newPropertyInt(key, val)
         else:
             raise RuntimeError("unknown environment variable type")
     env.newPropertyInt("GRID_SIZE", grid_size)
 
-    def make_location_message(
-        model: pyflamegpu.ModelDescription, name: str
-    ):  # -> pyflamegpu.MessageDescription:
-        message = model.newMessageSpatial2D(name)
-        # XXX: setRadius: if not divided by 2, messages wrap around the borders and occur multiple times
-        message.setRadius(grid_size / 2)
-        message.setMin(0, 0)
-        message.setMax(grid_size, grid_size)
+    def make_location_message(model: pyflamegpu.ModelDescription, name: str):
+        message = model.newMessageBruteForce(name)
         message.newVariableID("id")
+        message.newVariableInt("x")
+        message.newVariableInt("y")
         return message
 
     resource_msg = make_location_message(model, "resource_location")
     resource_msg.newVariableInt("type")
+    resource_msg.newVariableInt("amount")
     make_location_message(model, "human_location")
+    resource_collection_msg = model.newMessageBucket("resource_collection")
+    resource_collection_msg.newVariableInt("amount")
+    resource_collection_msg.setBounds(0, max_resources)
     ctx.human = make_human(model)
     ctx.resource = make_resource(model)
 
@@ -169,11 +181,13 @@ def make_simulation(
 
     # layer 1: location message output
     resource_output_location_description = make_agent_function(
-        ctx.resource, "output_location", py_fn=output_location_and_type
+        ctx.resource,
+        "output_location_and_type",
+        cuda_fn_file="agent_fn/output_resource_location.cu",
     )
     resource_output_location_description.setMessageOutput("resource_location")
     human_output_location_description = make_agent_function(
-        ctx.human, "output_location", py_fn=output_location
+        ctx.human, "human_location", py_fn=human_location
     )
     human_output_location_description.setMessageOutput("human_location")
     # layer 2: perception
@@ -195,7 +209,16 @@ def make_simulation(
         "human_behavior",
         cuda_fn_file="agent_fn/human_behavior.cu",
     )
+    human_behavior_description.setMessageOutput("resource_collection")
     human_behavior_description.setAllowAgentDeath(True)
+    # layer 4: environmental effects
+    resource_decay_description = make_agent_function(
+        ctx.resource,
+        "resource_decay",
+        cuda_fn_file="agent_fn/resource_decay.cu",
+    )
+    resource_decay_description.setMessageInput("resource_collection")
+    # resource_decay_description.setAllowAgentDeath(True)
 
     # Identify the root of execution
     # model.addExecutionRoot(resource_output_location_description)
@@ -208,6 +231,9 @@ def make_simulation(
         human_perception_human_locations_description
     )
     model.newLayer("layer 3: behavior").addAgentFunction(human_behavior_description)
+    model.newLayer("layer 4: environmental effects").addAgentFunction(
+        resource_decay_description
+    )
     # Add the step function to the model.
     # step_validation_fn = step_validation()
     # model.addStepFunction(step_validation_fn)

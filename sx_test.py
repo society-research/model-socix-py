@@ -1,6 +1,12 @@
 import math
+import numpy as np
+import random
+
+import pytest
+import ot
 import pyflamegpu
 
+import util
 from sx import make_simulation, C
 
 
@@ -54,6 +60,42 @@ def test_collect_resource_success():
         humans[0].getVariableFloat("actionpotential"),
         C.AP_DEFAULT - C.AP_COLLECT_RESOURCE,
     )
+
+
+def test_collect_resource_depleted_after_multiple_collections():
+    model, simulation, ctx = make_simulation()
+    humans = pyflamegpu.AgentVector(ctx.human, 5)
+    for human in humans:
+        human.setVariableInt("x", 0)
+        human.setVariableInt("y", 0)
+        human.setVariableArrayInt("resources", (1, 0))
+        human.setVariableFloat("actionpotential", C.AP_DEFAULT)
+    resources = pyflamegpu.AgentVector(ctx.resource, 1)
+    resources[0].setVariableInt("x", 0)
+    resources[0].setVariableInt("y", 0)
+    simulation.setPopulationData(resources)
+    simulation.setPopulationData(humans)
+    simulation.step()
+    simulation.getPopulationData(humans)
+    assert humans.size() == 5
+    for human in humans:
+        assert human.getVariableArrayInt("resources") == (2, 0), "collected resource"
+    simulation.step()
+    simulation.getPopulationData(humans)
+    assert humans.size() == 5
+    for human in humans:
+        assert human.getVariableArrayInt("resources") == (
+            2,
+            0,
+        ), "no collected: resource depleted"
+    for _ in range(C.RESOURCE_RESTORATION_TICKS + 1):
+        simulation.step()
+    simulation.getPopulationData(humans)
+    for human in humans:
+        assert human.getVariableArrayInt("resources") == (
+            3,
+            0,
+        ), "resource is regrown, and should get collected again"
 
 
 def test_move_towards_resource_1d():
@@ -111,21 +153,24 @@ def test_move_towards_resource_2d():
     humans[0].setVariableFloat("actionpotential", C.AP_DEFAULT)
     resources = pyflamegpu.AgentVector(ctx.resource, 1)
     resources[0].setVariableInt("x", 3)
-    resources[0].setVariableInt("y", 3)
+    resources[0].setVariableInt("y", 6)
+    exp_path = [
+        [0, 1],
+        [0, 2],
+        [0, 3],
+        # [0, 4] and [1, 3] have equal euclidean distance to [3, 6], but our
+        # model is discrete and must make a deterministic choice
+        [0, 4],
+        [1, 4],
+        [1, 4],
+    ]
     simulation.setPopulationData(resources)
     simulation.setPopulationData(humans)
-    simulation.step()
-    simulation.getPopulationData(humans)
-    assert humans[0].getVariableInt("x") == 0
-    assert humans[0].getVariableInt("y") == 1
-    simulation.step()
-    simulation.getPopulationData(humans)
-    assert humans[0].getVariableInt("x") == 1
-    assert humans[0].getVariableInt("y") == 1
-    simulation.step()
-    simulation.getPopulationData(humans)
-    assert humans[0].getVariableInt("x") == 1
-    assert humans[0].getVariableInt("y") == 1
+    for step, exp_loc in enumerate(exp_path):
+        print(f"[{step}] loc:{exp_loc}")
+        simulation.step()
+        simulation.getPopulationData(humans)
+        assert [humans[0].getVariableInt("x"), humans[0].getVariableInt("y")] == exp_loc
     assert humans[0].getVariableArrayInt("resources") == (2, 0)
 
 
@@ -153,7 +198,7 @@ def test_recover_actionpotential_by_sleeping():
     simulation.step()
     simulation.getPopulationData(humans)
     # TODO(maybe): add agent variable sleeping to count down ~8 hours
-    # assert humans[0].getVariableArrayInt("resources") == (0, 0), "still sleepnig"
+    # assert humans[0].getVariableArrayInt("resources") == (0, 0), "still sleeping"
     # assert (
     #     humans[0].getVariableFloat("actionpotential") == 2 * C.AP_PER_TICK_RESTING
     # ), "resting restored some AP"
@@ -202,9 +247,6 @@ def test_crowding_should_resolve():
     simulation.getPopulationData(humans)
     crowded = 0
     for human in humans:
-        # print(
-        #     f"human[{human.getID()}], at=[{human.getVariableInt('x')}, {human.getVariableInt('y')}], ap={human.getVariableFloat('actionpotential')}"
-        # )
         crowded += human.getVariableInt("is_crowded")
     assert crowded <= 15, "<= 15% should be crowded after 10 steps"
 
@@ -274,11 +316,69 @@ def test_move_towards_2nd_resource_to_stay_alive():
     assert humans[0].getVariableArrayInt("resources") == (10, 1)
 
 
-# def test_movement_around_2d_grid_boundaries():
-#    model, simulation, ctx = make_simulation()
-#    humans = pyflamegpu.AgentVector(ctx.human, 1)
-#    humans[0].setVariableInt("x", 0)
-#    humans[0].setVariableInt("y", 0)
-#    simulation.setPopulationData(humans)
-#    simulation.step()
-#    simulation.getPopulationData(humans)
+@pytest.mark.parametrize(
+    "name, pos_source, pos_target",
+    [
+        ["single resource, on y axis", np.array([[11, 11]]), np.array([[0, 30]])],
+        ["3-1 resources", np.array([[0, 0], [30, 20], [0, 10]]), np.array([[20, 20]])],
+    ],
+)
+def DIStest_solve_ot_problem(name, pos_source, pos_target):
+    """Setup here is similar to https://pythonot.github.io/auto_examples/plot_OT_2D_samples.html"""
+    # this test initializes humans at "random" positions
+    # XXX: should be an accuracy benchmark to repeat this with different seeds!
+    seed = 2
+    random.seed(seed)
+    # OT solution: EMD
+    M_loss = ot.dist(pos_source, pos_target)
+    n, m = len(pos_source), len(pos_target)
+    a, b = np.ones((n,)) / n, np.ones((m,)) / m
+    exp = ot.emd(a, b, M_loss)
+    # ABM solution:
+    grid_size = 30
+    model, simulation, ctx = make_simulation(grid_size=grid_size)
+    simulation.SimulationConfig().random_seed = seed
+    resources = pyflamegpu.AgentVector(ctx.resource, len(pos_source) + len(pos_target))
+    for i, p in enumerate(pos_source):
+        resources[i].setVariableInt("x", int(p[0]))
+        resources[i].setVariableInt("y", int(p[1]))
+        resources[i].setVariableInt("type", 0)
+    for i, p in enumerate(pos_target):
+        resources[i + len(pos_source)].setVariableInt("x", int(p[0]))
+        resources[i + len(pos_source)].setVariableInt("y", int(p[1]))
+        resources[i + len(pos_source)].setVariableInt("type", 1)
+    n_humans = 10
+    humans = pyflamegpu.AgentVector(ctx.human, n_humans)
+    for human in humans:
+        human.setVariableInt("x", random.randint(0, grid_size))
+        human.setVariableInt("y", random.randint(0, grid_size))
+        human.setVariableArrayInt("resources", (2, 2))
+        human.setVariableFloat("actionpotential", C.AP_DEFAULT)
+    for av in [resources, humans]:
+        simulation.setPopulationData(av)
+    steps = 100
+    paths = []
+    collected_resources = []
+    for step in range(steps):
+        simulation.step()
+        simulation.getPopulationData(humans)
+        for human in humans:
+            id = human.getID()
+            x, y = human.getVariableInt("x"), human.getVariableInt("y")
+            paths.append([id, x, y])
+            loc = human.getVariableArrayInt("ana_last_resource_location")
+            if loc != (-1, -1):
+                collected_resources.append([id, *loc])
+    got = util.collected_resource_list_to_cost_matrix(
+        collected_resources, pos_source, pos_target
+    )
+    assert exp.shape == got.shape
+    print("res[-10:]:\n", collected_resources[-10:])
+    print("M_loss:\n", M_loss)
+    print("exp (EMD):\n", exp)
+    print("got (ABM):\n", got)
+    assert (
+        (got != 0) == (exp != 0)
+    ).all(), "assume the non-zero-entries are the same positions"
+    # TODO: enable allclose comparison again
+    # assert np.allclose(exp, got, atol=0.1)

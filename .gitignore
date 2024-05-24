@@ -4,3 +4,5 @@
 __pycache__/
 venv/
 build-venv/
+.ipynb_checkpoints/
+*.ipynb

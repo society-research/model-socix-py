@@ -26,34 +26,39 @@ FLAMEGPU_DEVICE_FUNCTION int findMax(int ar[], int len) {
     }
     return max_index;
 }
-FLAMEGPU_DEVICE_FUNCTION void printAction(int a) {
+FLAMEGPU_DEVICE_FUNCTION void printAction(int id, int a) {
     switch (a) {
     case Action::RandomWalk:
-        printf("random_walk();\n");
+        printf("%d->random_walk();", id);
         break;
     case Action::Rest:
-        printf("rest();\n");
+        printf("%d->rest();", id);
         break;
     case Action::CollectResource0:
-        printf("collect_resource(0);\n");
+        printf("%d->collect_resource(0);", id);
         break;
     case Action::CollectResource1:
-        printf("collect_resource(1);\n");
+        printf("%d->collect_resource(1);", id);
         break;
     case Action::MoveToClosestResource0:
-        printf("move_to_closest_resource(0);\n");
+        printf("%d->move_to_closest_resource(0);", id);
         break;
     case Action::MoveToClosestResource1:
-        printf("move_to_closest_resource(1);\n");
+        printf("%d->move_to_closest_resource(1);", id);
         break;
     case Action::EOF:
     default:
-        printf("Action::EOF");
+        printf("%d->Action::EOF;", id);
         break;
     }
+    // printf("\n");
 }
 
-FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::MessageNone) {
+FLAMEGPU_DEVICE_FUNCTION float distance(int x, int y, int xo, int yo) {
+    return sqrt(float((x - xo) * (x - xo) + (y - yo) * (y - yo)));
+}
+
+FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::MessageBucket) {
     float ap = FLAMEGPU->getVariable<float>("actionpotential");
     int x = FLAMEGPU->getVariable<int>("x");
     int y = FLAMEGPU->getVariable<int>("y");
@@ -90,11 +95,19 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
     };
     auto collect_resource = [&](int resource_type) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_COLLECT_RESOURCE");
-        if (resource_type == 0) {
-            resources[0] += 1;
-        } else if (resource_type == 1) {
-            resources[1] += 1;
-        }
+        resources[resource_type] += 1;
+        // store analysis data
+        int resource_x =
+            FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_x", resource_type);
+        int resource_y =
+            FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_y", resource_type);
+        auto resource_id = FLAMEGPU->getVariable<flamegpu::id_t, N_RESOURCE_TYPES>(
+            "closest_resource_id", resource_type);
+        // printf("collecting x=%d, y=%d\n", resource_x, resource_y);
+        FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 0, resource_x);
+        FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 1, resource_y);
+        FLAMEGPU->message_out.setVariable<int>("amount", 1);
+        FLAMEGPU->message_out.setKey(resource_id); // bucket of resource that is collected
     };
     auto move_to_closest_resource = [&](int resource_type) {
         ap -= FLAMEGPU->environment.getProperty<float>("AP_MOVE");
@@ -104,10 +117,14 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             FLAMEGPU->getVariable<int, N_RESOURCE_TYPES>("closest_resource_y", resource_type);
         int dx = abs((x - closest_x));
         int dy = abs((y - closest_y));
-        if (dx > dy) {
-            x = (x + ((closest_x - x) / dx));
+        int step_x = (closest_x - x) / dx;
+        int step_y = (closest_y - y) / dy;
+        float dist_after_x_step = vec2Dist(x + step_x, y, closest_x, closest_y);
+        float dist_after_y_step = vec2Dist(x, y + step_y, closest_x, closest_y);
+        if (dist_after_x_step < dist_after_y_step) {
+            x += step_x;
         } else {
-            y = (y + ((closest_y - y) / dy));
+            y += step_y;
         }
     };
     auto rest = [&]() {
@@ -127,8 +144,7 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             return flamegpu::DEAD;
         }
         // TODO(skep): strictly speaking food consumption is behavior and should be scored below
-        // before executed
-        // TODO(skep): consume resources[1] as well!
+        // before being executed
         if (resources[0] != 0 && resources[1] != 0 &&
             hunger > FLAMEGPU->environment.getProperty<int>("HUNGER_TO_TRIGGER_CONSUMPTION")) {
             resources[0] -= 1;
@@ -136,6 +152,12 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             hunger -= FLAMEGPU->environment.getProperty<int>("HUNGER_PER_RESOURCE_CONSUMPTION");
         }
     }
+
+    // reset analysis data
+    FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 0, -1);
+    FLAMEGPU->setVariable<int, N_DIM>("ana_last_resource_location", 1, -1);
+
+    // GOAP algorithm
     int scores[Action::EOF];
     memset(&scores, 0, Action::EOF * sizeof(int));
     scores[Action::Rest] = 1;
@@ -169,7 +191,7 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
         }
     }
     int selected_action = findMax(scores, Action::EOF);
-    printAction(selected_action);
+    // printAction(FLAMEGPU->getID(), selected_action);
     switch (selected_action) {
     case Action::RandomWalk:
         random_walk();
