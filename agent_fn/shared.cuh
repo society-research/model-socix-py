@@ -5,4 +5,3 @@ FLAMEGPU_DEVICE_FUNCTION float vec2Dist(int x, int y, int xo, int yo) {
 
 constexpr int N_RESOURCE_TYPES = 2;
 constexpr int N_DIM = 2;
-constexpr int TARGET_RESOURCE_AMOUNT = 5;

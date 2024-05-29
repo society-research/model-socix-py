@@ -27,6 +27,8 @@ C = ostruct.OpenStruct(
     AP_MOVE=0.05,
     # euclidean distance at which resource is in range for collection
     RESOURCE_COLLECTION_RANGE=3.0,
+    # after being in possession of this amount of resources a human, will do something else
+    TARGET_RESOURCE_AMOUNT=5,
     # required sleep per night in hours
     SLEEP_REQUIRED_PER_NIGHT=8,
     # amount of humans in a single tile, after which humans feel crowded

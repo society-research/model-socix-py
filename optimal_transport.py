@@ -19,30 +19,19 @@ def solve_ot_with_sinkhorn(pos_source, pos_target, SCALE=5, jiggle_factor=0.01):
         jiggle_factor (float): amount of jiggling applied to resource locations
     """
     M_loss = ot.dist(pos_source, pos_target)
+    # NOTE: To ensure convergence of sinkhorns algorithm the distributions must
+    # not have resources at the exact same distances, thus locations are "jiggled" a bit.
     jiggle = lambda x: (x + jiggle_factor * np.random.rand(*x.shape)) / SCALE
     pos_source_j, pos_target_j = jiggle(pos_source), jiggle(pos_target)
-
-    # NOTE: To apply sinkhorns algorithm the distributions must not have
-    # resources at the exact same distances, thus locations are "jiggled" a bit.
     M_loss_jiggled = ot.dist(pos_source_j, pos_target_j)
-    # plot_cost(M_loss)
-    # plot_cost(M_loss_jiggled, extra="_jiggled")
-
-    # initialize
     n, m = len(pos_source), len(pos_target)
-
     # sinkhorn: needs x,y \in [0, 1] and requires jiggled input for convergence
     # (equal distances that are common with integer locations on a small scale hinder convergence)
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
     regularization = 1e-1
     sinkhorn = ot.sinkhorn(a, b, M_loss_jiggled, regularization, numItermax=10000)
-    # plot_ot(pos_source_j * SCALE, pos_target_j * SCALE, sinkhorn, "sinkhorn")
-
-    # EMD -- Earth Movers Distance - works fine
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
     emd = ot.emd(a, b, M_loss)
-    # plot_ot(pos_source, pos_target, emd, "EMD")
-
     return sinkhorn, {"emd": emd, "loss": M_loss, "loss_jiggled": M_loss_jiggled}
 
 
@@ -55,13 +44,21 @@ def solve_ot_with_abm(
     resource_restoration_ticks=50,
     hunger_starved_to_death=1000,
     n_humans_crowded=200,
+    target_resource_amount=5,
+    hunger_per_resource_consumption=8,
 ):
     """Solver for the optimal transport problem using the ABM sx.py"""
     random.seed(seed)
     grid_size = int(np.max([pos_source, pos_target]))
+    # save global variable
+    Cold = dict()
+    for k, v in C.items():
+        Cold[k] = v
     C.RESOURCE_RESTORATION_TICKS = resource_restoration_ticks
     C.HUNGER_STARVED_TO_DEATH = hunger_starved_to_death
     C.N_HUMANS_CROWDED = n_humans_crowded
+    C.TARGET_RESOURCE_AMOUNT = target_resource_amount
+    C.HUNGER_PER_RESOURCE_CONSUMPTION = hunger_per_resource_consumption
     model, simulation, ctx = make_simulation(grid_size=grid_size)
     simulation.SimulationConfig().random_seed = seed
     resources = pyflamegpu.AgentVector(ctx.resource, len(pos_source) + len(pos_target))
@@ -98,20 +95,24 @@ def solve_ot_with_abm(
             res = np.array(human.getVariableArrayInt("resources"))
             avg_resources[-1] += res
             x, y = human.getVariableInt("x"), human.getVariableInt("y")
-            paths.append([id, x, y])
+            paths.append([step, id, x, y])
             loc = human.getVariableArrayInt("ana_last_resource_location")
             if loc != (-1, -1):
-                collected_resources.append([id, *loc])
+                collected_resources.append([step, id, *loc])
         avg_resources[-1] /= len(humans)
+    for k, v in Cold.items():
+        C[k] = v
+    collected_resources = np.array(collected_resources)
     return (
         util.collected_resource_list_to_cost_matrix(
-            collected_resources, pos_source, pos_target
+            collected_resources[:, 1:], pos_source, pos_target
         ),
         {
             "paths": paths,
             "alive_humans": alive_humans,
             "avg_resources": avg_resources,
             "constants": C,
+            "collected_resources": collected_resources,
         },
     )
 
@@ -173,6 +174,7 @@ def plot_ot(meta, xs, xt, solution, what, extra=""):
     plt.show()
 
 
+# TODO: should normalize the distribution  i.e. each row AND each column must sum to 1, how to do that
 # TODO: should penalize every single row (and column) that does not sum up to
 #       1/(len(rows) | 1/(len(columns) respectively, since this means it is not
 #       saturated, i.e. mines/factories are not working 100%
@@ -254,6 +256,8 @@ def plot_abm(meta, xs, xt, solution, config, comparison):
     hunger_starved_to_death         {config.hunger_starved_to_death}
     n_humans_crowded                {config.n_humans_crowded}
     steps                           {config.steps}
+    target_resource_amount          {config.target_resource_amount}
+    hunger_per_resource_consumption {config.hunger_per_resource_consumption}
 
     loss_ot                         {comparison.loss_ot}
     loss_abm                        {comparison.loss_abm}

@@ -177,17 +177,20 @@ FLAMEGPU_AGENT_FUNCTION(human_behavior, flamegpu::MessageNone, flamegpu::Message
             distance_to_resource <=
                 FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE")) {
             scores[Action::CollectResource0 + resource_type] =
-                10 + (TARGET_RESOURCE_AMOUNT - resources[resource_type]);
+                10 + (FLAMEGPU->environment.getProperty<float>("TARGET_RESOURCE_AMOUNT") -
+                      resources[resource_type]);
         }
         if (can_move &&
             distance_to_resource >
                 FLAMEGPU->environment.getProperty<float>("RESOURCE_COLLECTION_RANGE") &&
             distance_to_resource != FLT_MAX) {
+            const float resource_saturation =
+                FLAMEGPU->environment.getProperty<float>("TARGET_RESOURCE_AMOUNT") -
+                resources[resource_type];
             scores[Action::MoveToClosestResource0 + resource_type] =
                 int(10 - distance_to_resource * FLAMEGPU->environment.getProperty<float>(
                                                     "SCORE_REDUCTION_PER_TILE_DISTANCE")) +
-                /*reduce by resource saturation*/ (TARGET_RESOURCE_AMOUNT -
-                                                   resources[resource_type]);
+                resource_saturation;
         }
     }
     int selected_action = findMax(scores, Action::EOF);
