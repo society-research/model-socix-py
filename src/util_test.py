@@ -4,13 +4,14 @@ import numpy as np
 
 
 @pytest.mark.parametrize(
-    "name, pos_source, pos_target, collection_list, exp",
+    "name, pos_source, pos_target, collection_list, use_last_only, exp",
     [
         [
             "a single agent (id=1) collects at 0,0, then at 5,5",
             np.array([[0, 0]]),
             np.array([[5, 5]]),
             np.array([[1, 0, 0], [1, 0, 0], [1, 5, 5]]),
+            False,
             np.array([[1]]),
         ],
         [
@@ -25,6 +26,7 @@ import numpy as np
                     [2, 6, 6],
                 ]
             ),
+            False,
             np.array(
                 [
                     [0.5, 0],
@@ -44,6 +46,7 @@ import numpy as np
                     [1, 5, 5],
                 ]
             ),
+            False,
             np.array(
                 [
                     [1.0],
@@ -61,6 +64,7 @@ import numpy as np
                     [1, 5, 5],
                 ]
             ),
+            False,
             np.array(
                 [
                     [0.5],
@@ -80,6 +84,7 @@ import numpy as np
                     [1, 5, 5],
                 ]
             ),
+            False,
             np.array(
                 [
                     [1 / 3],
@@ -99,9 +104,28 @@ import numpy as np
                     [1, 6, 6],
                 ]
             ),
+            False,
             np.array(
                 [
                     [0.5, 0.5],
+                ]
+            ),
+        ],
+        [
+            "human collects same resource at different locations: multiple targets, but only one used",
+            np.array([[0, 0]]),
+            np.array([[5, 5], [6, 6]]),
+            np.array(
+                [
+                    [1, 0, 0],
+                    [1, 5, 5],
+                    [1, 6, 6],
+                ]
+            ),
+            True,
+            np.array(
+                [
+                    [1.0, 0.0],
                 ]
             ),
         ],
@@ -117,6 +141,7 @@ import numpy as np
                     [1, 6, 6],
                 ]
             ),
+            False,
             np.array(
                 [
                     [0.25, 0.25],
@@ -136,6 +161,7 @@ import numpy as np
                     [1, 6, 6],
                 ]
             ),
+            False,
             np.array(
                 [
                     [0.5, 0],
@@ -146,12 +172,13 @@ import numpy as np
     ],
 )
 def test_collected_resource_list_to_cost_matrix(
-    name, pos_source, pos_target, collection_list, exp
+    name, pos_source, pos_target, collection_list, use_last_only, exp
 ):
     got = util.collected_resource_list_to_cost_matrix(
         collection_list,
         pos_source,
         pos_target,
+        use_last_only=use_last_only,
     )
     assert exp.shape == got.shape
     assert (exp == got).all()

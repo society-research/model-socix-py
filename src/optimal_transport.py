@@ -38,6 +38,7 @@ def solve_ot_with_sinkhorn(pos_source, pos_target, SCALE=5, jiggle_factor=0.01):
 def solve_ot_with_abm(
     pos_source,
     pos_target,
+    use_last_only=False,
     seed=4,
     n_humans=100,
     steps=1000,
@@ -46,6 +47,7 @@ def solve_ot_with_abm(
     n_humans_crowded=200,
     target_resource_amount=5,
     hunger_per_resource_consumption=8,
+    resource_depleted_after_collections=5,
 ):
     """Solver for the optimal transport problem using the ABM sx.py"""
     random.seed(seed)
@@ -54,6 +56,7 @@ def solve_ot_with_abm(
     Cold = dict()
     for k, v in C.items():
         Cold[k] = v
+    C.RESOURCE_DEPLETED_AFTER_COLLECTIONS = resource_depleted_after_collections
     C.RESOURCE_RESTORATION_TICKS = resource_restoration_ticks
     C.HUNGER_STARVED_TO_DEATH = hunger_starved_to_death
     C.N_HUMANS_CROWDED = n_humans_crowded
@@ -105,7 +108,10 @@ def solve_ot_with_abm(
     collected_resources = np.array(collected_resources)
     return (
         util.collected_resource_list_to_cost_matrix(
-            collected_resources[:, 1:], pos_source, pos_target
+            collected_resources[:, 1:],
+            pos_source,
+            pos_target,
+            use_last_only=use_last_only,
         ),
         {
             "paths": paths,

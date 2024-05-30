@@ -1,7 +1,9 @@
 import numpy as np
 
 
-def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocations):
+def collected_resource_list_to_cost_matrix(
+    collections, srcLocations, tgtLocations, use_last_only=False
+):
     cost = np.zeros((len(srcLocations), len(tgtLocations)), dtype="float")
     agents = {}
     for event in collections:
@@ -54,6 +56,9 @@ def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocatio
                         break
                 if not stop:
                     prefix = tgt.pop()
+                if use_last_only:
+                    src = [src[-1]]
+                    tgt = [tgt[0]]
                 for i in range(len(src)):
                     for j in range(len(tgt)):
                         x, y = get_resource_slot([src[i], tgt[j]])

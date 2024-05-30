@@ -42,7 +42,6 @@ def test_solve_ot_with_abm(name, xs, xt, config):
     assert len(meta["alive_humans"]) == config["steps"]
 
 
-
 def test__make_distrib_unique():
     random.seed(2)
     orig = [[1, 1], [1, 1], [1, 20]]
