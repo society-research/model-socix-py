@@ -22,3 +22,9 @@ analysis:
 analysis-w:
 	while true; do inotifywait -e modify,close_write,moved_to,move,create,delete $(shell find -maxdepth 2 -name '*.cu' -or -name '*.py'); make analysis; done
 .PHONY: analysis
+get-fonts:
+	mkdir -p ~/.local/share/fonts/Libertinus
+	wget -O libertinus.zip "https://www.fontsquirrel.com/fonts/download/libertinus"
+	unzip -d ~/.local/share/fonts/Libertinus libertinus.zip
+	rm libertinus.zip
+.PHONY: get-fonts

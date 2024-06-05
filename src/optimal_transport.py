@@ -11,7 +11,12 @@ from sx import make_simulation, C
 
 
 def solve_ot_with_sinkhorn(
-    pos_source, pos_target, SCALE=5, jiggle_factor=0.01, numItermax=10000
+    pos_source,
+    pos_target,
+    SCALE=5,
+    jiggle_factor=0.01,
+    numItermax=10000,
+    regularization=1e-1,
 ):
     """solve_ot_with_sinkhorn uses the sinkhorn algorithm to solve the optimal
         transport problem between distributions pos_source and pos_target.
@@ -19,6 +24,8 @@ def solve_ot_with_sinkhorn(
     Arguments:
         SCALE (int): see generate_distributions
         jiggle_factor (float): amount of jiggling applied to resource locations
+        numItermax (int): max iteratations of the sinkhorn-knopp algorithm
+        regularization (float): regularization of the sinkhorn-knopp algorithm
     """
     M_loss = ot.dist(pos_source, pos_target)
     # NOTE: To ensure convergence of sinkhorns algorithm the distributions must
@@ -30,7 +37,6 @@ def solve_ot_with_sinkhorn(
     # sinkhorn: needs x,y \in [0, 1] and requires jiggled input for convergence
     # (equal distances that are common with integer locations on a small scale hinder convergence)
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
-    regularization = 1e-1
     sinkhorn = ot.sinkhorn(a, b, M_loss_jiggled, regularization, numItermax=numItermax)
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
     emd = ot.emd(a, b, M_loss)
