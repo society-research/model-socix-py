@@ -10,7 +10,9 @@ import pyflamegpu
 from sx import make_simulation, C
 
 
-def solve_ot_with_sinkhorn(pos_source, pos_target, SCALE=5, jiggle_factor=0.01):
+def solve_ot_with_sinkhorn(
+    pos_source, pos_target, SCALE=5, jiggle_factor=0.01, numItermax=10000
+):
     """solve_ot_with_sinkhorn uses the sinkhorn algorithm to solve the optimal
         transport problem between distributions pos_source and pos_target.
 
@@ -29,7 +31,7 @@ def solve_ot_with_sinkhorn(pos_source, pos_target, SCALE=5, jiggle_factor=0.01):
     # (equal distances that are common with integer locations on a small scale hinder convergence)
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
     regularization = 1e-1
-    sinkhorn = ot.sinkhorn(a, b, M_loss_jiggled, regularization, numItermax=10000)
+    sinkhorn = ot.sinkhorn(a, b, M_loss_jiggled, regularization, numItermax=numItermax)
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
     emd = ot.emd(a, b, M_loss)
     return sinkhorn, {"emd": emd, "loss": M_loss, "loss_jiggled": M_loss_jiggled}
@@ -159,25 +161,35 @@ def plot_paths_4x4(pos_source, pos_target, paths):
     plt.show()
 
 
-def plot_ot(meta, xs, xt, solution, what, extra=""):
+def plot_ot(meta, xs, xt, solution, what, extra="", file=""):
     plt.figure(figsize=(18, 6))  # Adjust the figure size as needed
     # Plot 1: Cost matrix M
     plt.subplot(1, 3, 1)
     plt.imshow(meta["loss"], interpolation="nearest")
+    plt.xlabel("Index of source / 1")
+    plt.ylabel("Index of target / 1")
     plt.title(f"Cost matrix M{extra}")
     # Plot 2: OT matrix `solution`
     plt.subplot(1, 3, 2)
     plt.imshow(solution, interpolation="nearest")
-    plt.title(f"OT matrix: {what}")
+    plt.xlabel("Index of source / 1")
+    plt.ylabel("Index of target / 1")
+    plt.title(f"Transport plan: {what}")
     # Plot 3: OT matrix `solution` with samples
     plt.subplot(1, 3, 3)
     ot.plot.plot2D_samples_mat(xs, xt, solution, color=[0.5, 0.5, 1])
     plt.plot(xs[:, 0], xs[:, 1], "+b", label="Source samples")
     plt.plot(xt[:, 0], xt[:, 1], "xr", label="Target samples")
+    plt.xlabel("x / 1")
+    plt.ylabel("y / 1")
     plt.legend(loc=0)
-    plt.title(f"OT matrix: {what} with samples")
+    plt.title(f"Transport plan: {what} with samples")
     plt.tight_layout()  # Adjust subplot parameters to give specified padding
-    plt.show()
+    if file:
+        plt.savefig(file)
+        plt.clf()
+    else:
+        plt.show()
 
 
 # TODO: should normalize the distribution  i.e. each row AND each column must sum to 1, how to do that
