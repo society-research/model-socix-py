@@ -62,7 +62,7 @@ def make_tex_constants(tex, precision=None):
         key = key[0].upper() + key[1:]
         return r"\newcommand{{\py{}}}{{{}}}".format(key, value)
 
-    #pp(tex)
+    # pp(tex)
     print("constants:")
     for key, value in tex.items():
         print(f" - {key} = {value} (type={type(value)})")
@@ -172,6 +172,34 @@ def analyze_ot_with_sinkhorn(xs, xt, SCALE):
 #    print(f"Sampler is {study.sampler.__class__.__name__}")
 
 
+def optimal_parameter_metrics(xs, xt, conf, sinkhorn):
+    abm, abm_meta = solver.solve_ot_with_abm(xs, xt, **conf)
+    abm = util.doubly_stochastic(abm)
+    result = solver.compare(xs, xt, abm, sinkhorn)
+    diff = (result.loss_abm - result.loss_ot) / result.loss_ot * 100
+    tex["OptimalSolutionDiff"] = round(diff, 2)
+    plt.figure(figsize=SIZE_2x1)
+    # Plot 1: OT matrix `abm`
+    plt.subplot(1, 2, 1)
+    plt.imshow(abm, interpolation="nearest")
+    plt.xlabel("Index of source / 1")
+    plt.ylabel("Index of target / 1")
+    plt.title(f"Transport plan: sinkhorn")
+    # Plot 2: OT matrix `abm` with samples
+    plt.subplot(1, 2, 2)
+    ot.plot.plot2D_samples_mat(xs, xt, abm, color=[0.5, 0.5, 1])
+    plt.plot(xs[:, 0], xs[:, 1], "+b", label="Source samples")
+    plt.plot(xt[:, 0], xt[:, 1], "xr", label="Target samples")
+    plt.xlabel("x / 1")
+    plt.ylabel("y / 1")
+    plt.legend(loc=0)
+    plt.title(f"Transport plan: sinkhorn with samples")
+    plt.tight_layout(pad=PLOT_PAD)
+    plt.savefig("output/abm-hyperparam-optim-result-solution.svg")
+    plt.clf()
+
+
+
 def analyze_optimality(conf, SCALE):
     diffs = []
     tex["OptimalityDifferentSamples"] = 20
@@ -197,6 +225,7 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
 
     config = input_config.copy()
     config["steps"] = steps
+    config["hunger_starved_to_death"] = steps # no human should die here
 
     N_plots = int(steps / steps_per_plot)
     if N_plots % 2 != 0:
@@ -242,7 +271,9 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
             collected_resources[:, 1:], xs, xt
         )
         partial = util.doubly_stochastic(partial)
-        _comparison = solver.compare(xs, xt, partial, sinkhorn)
+        result = solver.compare(xs, xt, partial, sinkhorn)
+        tex["ConvergenceLoss" + "i" * n] = round(result.loss_abm, 2)
+        tex["ConvergenceLossDiff" + "i" * n] = round((tex["ConvergenceLoss" + "i" * n] - result.loss_ot) / result.loss_ot * 100, 2)
         partial_meta = {
             "paths": abm_meta["paths"],
             "alive_humans": abm_meta["alive_humans"][i:j],
@@ -268,8 +299,39 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
     plt.clf()
 
 
+def analyze_optimality2(trialdb, SCALE, N_tests=5, M_top=5):
+    study = optuna.load_study(study_name="ABM", storage=trialdb)
+    def top(study, n: int):
+        return sorted(
+            study.trials, key=lambda x: x.value if x.value is not None else math.inf
+        )[:n]
+
+    data = []
+    for i in range(N_tests):
+        xs, xt = solver.generate_distributions(SCALE=SCALE)
+        data.append([])
+        for trial in top(study, M_top):
+            conf = trial.params
+            conf["n_humans_crowded"] = 2
+            conf["target_resource_amount"] = 1
+            conf["seed"] = 42
+            sinkhorn, sinkhorn_meta = solver.solve_ot_with_sinkhorn(xs, xt, SCALE=SCALE)
+            abm, abm_meta = solver.solve_ot_with_abm(xs, xt, **conf)
+            abm = util.doubly_stochastic(abm)
+            result = solver.compare(xs, xt, abm, sinkhorn)
+            diff = (result.loss_abm - result.loss_ot) / result.loss_ot * 100
+            data[-1].append(diff)
+    diffs, stds = np.mean(data, axis=0), np.std(data, axis=0)
+    table = (r" \\ ".join([r"${:.2f} \pm {:.2f}$"] * len(diffs))).format(*np.array([[i,j] for i,j in zip(diffs, stds)]).flatten())
+    tex["OptimalityTableM"] = M_top
+    tex["OptimalityTableN"] = N_tests
+    tex["OptimalityTableOfMTopTrialParamsForNTests"] = table
+    return diffs, stds, table
+
+
 if __name__ == "__main__":
     SCALE = 5
+    tex["DistributionScale"] = SCALE
     xs, xt = solver.generate_distributions(SCALE=SCALE)
 
     print(f"sinkhorn plot")
@@ -286,8 +348,12 @@ if __name__ == "__main__":
     hyperparam_optimization_results["n_humans_crowded"] = 2
     hyperparam_optimization_results["seed"] = 2
     for key, value in hyperparam_optimization_results.items():
-        key = key.replace('_', '')
+        key = key.replace("_", "")
         tex[key] = value
+    optimal_parameter_metrics(xs, xt, hyperparam_optimization_results, sinkhorn)
+
+    print(f"optimality: top hyperparams")
+    analyze_optimality2("sqlite:///src/hyperparam-optimization-ipynb.sqlite", 5, N_tests=5, M_top=5)
 
     print(f"optimality: comparison with sinkhorn")
     analyze_optimality(hyperparam_optimization_results, SCALE)
