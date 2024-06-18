@@ -1,4 +1,5 @@
 import yaml
+import pickle
 import io
 
 import pytest
@@ -55,3 +56,7 @@ def test_dump_yaml(tex, expected):
 #    d, s, t = analyze_optimality2("sqlite:///src/hyperparam-optimization-ipynb.sqlite", 5, N_tests=2, M_top=2)
 #    assert t == """
 #    """
+
+#def test_dumpdata():
+#    with open("output/abm-convergence-parts.pickle", "wb") as fd:
+#        pickle.dump({"conv_loss": [1, 2, 3], "conv_loss_diff": np.array([0.1, 1e-3])}, fd)

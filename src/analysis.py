@@ -1,5 +1,6 @@
 import math
 import os
+import pickle
 from pathlib import Path
 
 import numpy as np
@@ -261,6 +262,8 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
     # Plot convergence
     SIZE_Nx2 = (4 * SIZE_SINGLE_PLOT, (N_plots * SIZE_SINGLE_PLOT) // 2)
     plt.figure(figsize=SIZE_Nx2)  # Adjust the figure size as needed
+    conv_loss = []
+    conv_loss_diff = []
     for n in range(N_plots):
         i, j = n * 1000, (n + 1) * 1000
         all_resources = abm_meta["collected_resources"]
@@ -272,8 +275,12 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
         )
         partial = util.doubly_stochastic(partial)
         result = solver.compare(xs, xt, partial, sinkhorn)
-        tex["ConvergenceLoss" + "i" * n] = round(result.loss_abm, 2)
-        tex["ConvergenceLossDiff" + "i" * n] = round((tex["ConvergenceLoss" + "i" * n] - result.loss_ot) / result.loss_ot * 100, 2)
+        loss = result.loss_abm
+        tex["ConvergenceLoss" + "i" * n] = round(loss, 2)
+        conv_loss.append(loss)
+        loss_diff = (tex["ConvergenceLoss" + "i" * n] - result.loss_ot) / result.loss_ot * 100
+        tex["ConvergenceLossDiff" + "i" * n] = round(loss_diff, 2)
+        conv_loss_diff.append(loss_diff)
         partial_meta = {
             "paths": abm_meta["paths"],
             "alive_humans": abm_meta["alive_humans"][i:j],
@@ -297,6 +304,8 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
     plt.tight_layout(pad=PLOT_PAD)
     plt.savefig("output/abm-convergence-parts.svg")
     plt.clf()
+    with open("output/abm-convergence-parts.pickle", "wb") as fd:
+        pickle.dump({"conv_loss": conv_loss, "conv_loss_diff": conv_loss_diff}, fd)
 
 
 def analyze_optimality2(trialdb, SCALE, N_tests=5, M_top=5):
@@ -312,8 +321,6 @@ def analyze_optimality2(trialdb, SCALE, N_tests=5, M_top=5):
         data.append([])
         for trial in top(study, M_top):
             conf = trial.params
-            conf["n_humans_crowded"] = 2
-            conf["target_resource_amount"] = 1
             conf["seed"] = 42
             sinkhorn, sinkhorn_meta = solver.solve_ot_with_sinkhorn(xs, xt, SCALE=SCALE)
             abm, abm_meta = solver.solve_ot_with_abm(xs, xt, **conf)
@@ -337,23 +344,26 @@ if __name__ == "__main__":
     print(f"sinkhorn plot")
     sinkhorn = analyze_ot_with_sinkhorn(xs, xt, SCALE)
 
-    hyperparam_optimization_results = {
-        "n_humans": 150,
-        "use_last_only": True,
-        "resource_restoration_ticks": 46,
-        "hunger_starved_to_death": 610,
-        # "steps": 3000,
-        "resource_depleted_after_collections": 2,
-    }
-    hyperparam_optimization_results["n_humans_crowded"] = 2
+    # old:
+    #hyperparam_optimization_results = {
+    #    "n_humans": 150,
+    #    "use_last_only": True,
+    #    "resource_restoration_ticks": 46,
+    #    "hunger_starved_to_death": 610,
+    #    # "steps": 3000,
+    #    "resource_depleted_after_collections": 2,
+    #}
+    #hyperparam_optimization_results["n_humans_crowded"] = 2
+    optunadb = "sqlite:///src/hyperparam-optimization-ipynb-2.sqlite"
+    study = optuna.load_study(study_name="ABM", storage=optunadb)
+    hyperparam_optimization_results = study.best_params
     hyperparam_optimization_results["seed"] = 2
     for key, value in hyperparam_optimization_results.items():
-        key = key.replace("_", "")
-        tex[key] = value
+        tex[key.replace("_", "")] = value
     optimal_parameter_metrics(xs, xt, hyperparam_optimization_results, sinkhorn)
 
     print(f"optimality: top hyperparams")
-    analyze_optimality2("sqlite:///src/hyperparam-optimization-ipynb.sqlite", 5, N_tests=5, M_top=5)
+    analyze_optimality2(optunadb, 5, N_tests=5, M_top=5)
 
     print(f"optimality: comparison with sinkhorn")
     analyze_optimality(hyperparam_optimization_results, SCALE)
