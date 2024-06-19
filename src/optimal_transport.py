@@ -10,58 +10,66 @@ import pyflamegpu
 from sx import make_simulation, C
 
 
-def solve_ot_with_sinkhorn(pos_source, pos_target, SCALE=5, jiggle_factor=0.01):
+def solve_ot_with_sinkhorn(
+    pos_source,
+    pos_target,
+    SCALE=5,
+    jiggle_factor=0.01,
+    numItermax=10000,
+    regularization=1e-1,
+):
     """solve_ot_with_sinkhorn uses the sinkhorn algorithm to solve the optimal
         transport problem between distributions pos_source and pos_target.
 
     Arguments:
         SCALE (int): see generate_distributions
         jiggle_factor (float): amount of jiggling applied to resource locations
+        numItermax (int): max iteratations of the sinkhorn-knopp algorithm
+        regularization (float): regularization of the sinkhorn-knopp algorithm
     """
     M_loss = ot.dist(pos_source, pos_target)
+    # NOTE: To ensure convergence of sinkhorns algorithm the distributions must
+    # not have resources at the exact same distances, thus locations are "jiggled" a bit.
     jiggle = lambda x: (x + jiggle_factor * np.random.rand(*x.shape)) / SCALE
     pos_source_j, pos_target_j = jiggle(pos_source), jiggle(pos_target)
-
-    # NOTE: To apply sinkhorns algorithm the distributions must not have
-    # resources at the exact same distances, thus locations are "jiggled" a bit.
     M_loss_jiggled = ot.dist(pos_source_j, pos_target_j)
-    # plot_cost(M_loss)
-    # plot_cost(M_loss_jiggled, extra="_jiggled")
-
-    # initialize
     n, m = len(pos_source), len(pos_target)
-
     # sinkhorn: needs x,y \in [0, 1] and requires jiggled input for convergence
     # (equal distances that are common with integer locations on a small scale hinder convergence)
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
-    regularization = 1e-1
-    sinkhorn = ot.sinkhorn(a, b, M_loss_jiggled, regularization, numItermax=10000)
-    # plot_ot(pos_source_j * SCALE, pos_target_j * SCALE, sinkhorn, "sinkhorn")
-
-    # EMD -- Earth Movers Distance - works fine
+    sinkhorn = ot.sinkhorn(a, b, M_loss_jiggled, regularization, numItermax=numItermax)
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
     emd = ot.emd(a, b, M_loss)
-    # plot_ot(pos_source, pos_target, emd, "EMD")
-
     return sinkhorn, {"emd": emd, "loss": M_loss, "loss_jiggled": M_loss_jiggled}
 
 
 def solve_ot_with_abm(
     pos_source,
     pos_target,
+    use_last_only=False,
     seed=4,
     n_humans=100,
     steps=1000,
     resource_restoration_ticks=50,
     hunger_starved_to_death=1000,
     n_humans_crowded=200,
+    target_resource_amount=5,
+    hunger_per_resource_consumption=8,
+    resource_depleted_after_collections=5,
 ):
     """Solver for the optimal transport problem using the ABM sx.py"""
     random.seed(seed)
     grid_size = int(np.max([pos_source, pos_target]))
+    # save global variable
+    Cold = dict()
+    for k, v in C.items():
+        Cold[k] = v
+    C.RESOURCE_DEPLETED_AFTER_COLLECTIONS = resource_depleted_after_collections
     C.RESOURCE_RESTORATION_TICKS = resource_restoration_ticks
     C.HUNGER_STARVED_TO_DEATH = hunger_starved_to_death
     C.N_HUMANS_CROWDED = n_humans_crowded
+    C.TARGET_RESOURCE_AMOUNT = target_resource_amount
+    C.HUNGER_PER_RESOURCE_CONSUMPTION = hunger_per_resource_consumption
     model, simulation, ctx = make_simulation(grid_size=grid_size)
     simulation.SimulationConfig().random_seed = seed
     resources = pyflamegpu.AgentVector(ctx.resource, len(pos_source) + len(pos_target))
@@ -98,33 +106,40 @@ def solve_ot_with_abm(
             res = np.array(human.getVariableArrayInt("resources"))
             avg_resources[-1] += res
             x, y = human.getVariableInt("x"), human.getVariableInt("y")
-            paths.append([id, x, y])
+            paths.append([step, id, x, y])
             loc = human.getVariableArrayInt("ana_last_resource_location")
             if loc != (-1, -1):
-                collected_resources.append([id, *loc])
+                collected_resources.append([step, id, *loc])
         avg_resources[-1] /= len(humans)
+    for k, v in Cold.items():
+        C[k] = v
+    collected_resources = np.array(collected_resources)
     return (
         util.collected_resource_list_to_cost_matrix(
-            collected_resources, pos_source, pos_target
+            collected_resources[:, 1:],
+            pos_source,
+            pos_target,
+            use_last_only=use_last_only,
         ),
         {
             "paths": paths,
             "alive_humans": alive_humans,
             "avg_resources": avg_resources,
             "constants": C,
+            "collected_resources": collected_resources,
         },
     )
 
 
-def plot_paths_4x4(pos_source, pos_target, paths):
+def plot_paths_4x4(pos_source, pos_target, paths, file=''):
     fig, axs = plt.subplots(4, 4, figsize=(20, 20))
     axs = axs.flatten()
     paths = np.array(paths)
     grid_size = int(np.max([pos_source, pos_target]))
-    for i, id in enumerate(set(paths[:, 0])):
+    for i, id in enumerate(set(paths[:, 1])):
         if i == 16:
             break  # only size for 16 humans in this grid
-        path = paths[paths[:, 0] == id][:, 1:3]
+        path = paths[paths[:, 1] == id][:, 2:4]
         x = path[:, 0]
         y = path[:, 1]
         ax = axs[i]
@@ -143,36 +158,58 @@ def plot_paths_4x4(pos_source, pos_target, paths):
             label="resource[1]",
         )
         ax.plot(x, y, linestyle="-", marker="", label=f"path of H[{id}]")
+        # Add arrows between points
+        for j in range(0, len(x) - 1, 10):
+            ax.annotate(
+                "",
+                xy=(x[j + 1], y[j + 1]),
+                xytext=(x[j], y[j]),
+                arrowprops=dict(arrowstyle="->", color="blue", lw=1),
+            )
         ax.set_title(f"Human[{id}]")
         ax.set_xlim(0, grid_size)
         ax.set_ylim(0, grid_size)
         ax.grid(True)
         ax.legend()
     plt.tight_layout()
-    plt.show()
+    if file:
+        plt.savefig(file)
+    else:
+        plt.show()
 
 
-def plot_ot(meta, xs, xt, solution, what, extra=""):
+def plot_ot(meta, xs, xt, solution, what, extra="", file=""):
     plt.figure(figsize=(18, 6))  # Adjust the figure size as needed
     # Plot 1: Cost matrix M
     plt.subplot(1, 3, 1)
     plt.imshow(meta["loss"], interpolation="nearest")
+    plt.xlabel("Index of source / 1")
+    plt.ylabel("Index of target / 1")
     plt.title(f"Cost matrix M{extra}")
     # Plot 2: OT matrix `solution`
     plt.subplot(1, 3, 2)
     plt.imshow(solution, interpolation="nearest")
-    plt.title(f"OT matrix: {what}")
+    plt.xlabel("Index of source / 1")
+    plt.ylabel("Index of target / 1")
+    plt.title(f"Transport plan: {what}")
     # Plot 3: OT matrix `solution` with samples
     plt.subplot(1, 3, 3)
     ot.plot.plot2D_samples_mat(xs, xt, solution, color=[0.5, 0.5, 1])
     plt.plot(xs[:, 0], xs[:, 1], "+b", label="Source samples")
     plt.plot(xt[:, 0], xt[:, 1], "xr", label="Target samples")
+    plt.xlabel("x / 1")
+    plt.ylabel("y / 1")
     plt.legend(loc=0)
-    plt.title(f"OT matrix: {what} with samples")
+    plt.title(f"Transport plan: {what} with samples")
     plt.tight_layout()  # Adjust subplot parameters to give specified padding
-    plt.show()
+    if file:
+        plt.savefig(file)
+        plt.clf()
+    else:
+        plt.show()
 
 
+# TODO: should normalize the distribution  i.e. each row AND each column must sum to 1, how to do that
 # TODO: should penalize every single row (and column) that does not sum up to
 #       1/(len(rows) | 1/(len(columns) respectively, since this means it is not
 #       saturated, i.e. mines/factories are not working 100%
@@ -254,6 +291,8 @@ def plot_abm(meta, xs, xt, solution, config, comparison):
     hunger_starved_to_death         {config.hunger_starved_to_death}
     n_humans_crowded                {config.n_humans_crowded}
     steps                           {config.steps}
+    target_resource_amount          {config.target_resource_amount}
+    hunger_per_resource_consumption {config.hunger_per_resource_consumption}
 
     loss_ot                         {comparison.loss_ot}
     loss_abm                        {comparison.loss_abm}

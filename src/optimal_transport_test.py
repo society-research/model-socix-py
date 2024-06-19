@@ -1,9 +1,45 @@
 import random
 
+import pytest
 import numpy as np
 import ot
 
 import optimal_transport as solver
+
+
+@pytest.mark.parametrize(
+    "name, xs, xt, config, exp",
+    [
+        [
+            "2 resources, 1 human",
+            np.array([[1, 1]]),
+            np.array([[9, 9]]),
+            {"n_humans": 1, "steps": 12},
+            np.array([[1]]),
+        ],
+        # TODO: ["3-1 resources", np.array([[0, 0], [30, 20], [0, 10]]), np.array([[20, 20]])],
+    ],
+)
+def test_solve_ot_with_abm(name, xs, xt, config, exp):
+    M, meta = solver.solve_ot_with_abm(xs, xt, **config)
+    assert (M == exp).all()
+
+
+@pytest.mark.parametrize(
+    "name, xs, xt, config",
+    [
+        [
+            "2 resources, 1 human",
+            np.array([[1, 1]]),
+            np.array([[9, 9]]),
+            {"n_humans": 1, "steps": 12},
+        ],
+    ],
+)
+def test_solve_ot_with_abm(name, xs, xt, config):
+    _, meta = solver.solve_ot_with_abm(xs, xt, **config)
+    assert len(meta["collected_resources"]) >= 2
+    assert len(meta["alive_humans"]) == config["steps"]
 
 
 def test__make_distrib_unique():

@@ -1,4 +1,5 @@
 import sys
+import os
 import random
 import ostruct
 import pyflamegpu
@@ -27,6 +28,8 @@ C = ostruct.OpenStruct(
     AP_MOVE=0.05,
     # euclidean distance at which resource is in range for collection
     RESOURCE_COLLECTION_RANGE=3.0,
+    # after being in possession of this amount of resources a human, will do something else
+    TARGET_RESOURCE_AMOUNT=5,
     # required sleep per night in hours
     SLEEP_REQUIRED_PER_NIGHT=8,
     # amount of humans in a single tile, after which humans feel crowded
@@ -180,10 +183,11 @@ def make_simulation(
         return description
 
     # layer 1: location message output
+    cwd = os.path.dirname(os.path.abspath(__file__))
     resource_output_location_description = make_agent_function(
         ctx.resource,
         "output_location_and_type",
-        cuda_fn_file="agent_fn/output_resource_location.cu",
+        cuda_fn_file=f"{cwd}/agent_fn/output_resource_location.cu",
     )
     resource_output_location_description.setMessageOutput("resource_location")
     human_output_location_description = make_agent_function(
@@ -194,7 +198,7 @@ def make_simulation(
     human_perception_resource_locations_description = make_agent_function(
         ctx.human,
         "human_perception_resource_locations",
-        cuda_fn_file="agent_fn/human_perception_resource_locations.cu",
+        cuda_fn_file=f"{cwd}/agent_fn/human_perception_resource_locations.cu",
     )
     human_perception_resource_locations_description.setMessageInput("resource_location")
     human_perception_human_locations_description = make_agent_function(
@@ -207,7 +211,7 @@ def make_simulation(
     human_behavior_description = make_agent_function(
         ctx.human,
         "human_behavior",
-        cuda_fn_file="agent_fn/human_behavior.cu",
+        cuda_fn_file=f"{cwd}/agent_fn/human_behavior.cu",
     )
     human_behavior_description.setMessageOutput("resource_collection")
     human_behavior_description.setAllowAgentDeath(True)
@@ -215,7 +219,7 @@ def make_simulation(
     resource_decay_description = make_agent_function(
         ctx.resource,
         "resource_decay",
-        cuda_fn_file="agent_fn/resource_decay.cu",
+        cuda_fn_file=f"{cwd}/agent_fn/resource_decay.cu",
     )
     resource_decay_description.setMessageInput("resource_collection")
     # resource_decay_description.setAllowAgentDeath(True)

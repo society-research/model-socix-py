@@ -6,6 +6,8 @@ black
 flake8
 ipython
 matplotlib
-POT # -- optimal transport solvers
+prettyprint
 jupyter
+
+POT # -- optimal transport solvers
 optuna # hyper parameter optimization

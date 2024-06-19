@@ -6,3 +6,4 @@ venv/
 build-venv/
 .ipynb_checkpoints/
 *.ipynb
+output/

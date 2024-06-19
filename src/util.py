@@ -1,7 +1,9 @@
 import numpy as np
 
 
-def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocations):
+def collected_resource_list_to_cost_matrix(
+    collections, srcLocations, tgtLocations, use_last_only=False
+):
     cost = np.zeros((len(srcLocations), len(tgtLocations)), dtype="float")
     agents = {}
     for event in collections:
@@ -54,6 +56,9 @@ def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocatio
                         break
                 if not stop:
                     prefix = tgt.pop()
+                if use_last_only:
+                    src = [src[-1]]
+                    tgt = [tgt[0]]
                 for i in range(len(src)):
                     for j in range(len(tgt)):
                         x, y = get_resource_slot([src[i], tgt[j]])
@@ -65,3 +70,37 @@ def collected_resource_list_to_cost_matrix(collections, srcLocations, tgtLocatio
     if np.sum(cost) == 0:
         return cost
     return cost / np.sum(cost)
+
+
+def _fix_zeros(M):
+    """_fix_zeros checks for zeros in rows (axis=1) and columns (axis=0) and
+    distribute evenly."""
+    for i in range(2):
+        range_sum = M.sum(axis=i)
+        zero_row_indices = np.where(range_sum == 0)[0]
+        if zero_row_indices.size > 0:
+            replacement_value = 1 / M.shape[i]
+            for idx in zero_row_indices:
+                if i == 0:
+                    M[:, idx] = replacement_value
+                else:
+                    M[idx] = replacement_value
+    return M
+
+
+def doubly_stochastic(M):
+    """doubly_stochastic tries to convert matrix M into a doubly stochastic
+    matrix (see https://en.wikipedia.org/wiki/Doubly_stochastic_matrix)."""
+    n_rows, n_cols = M.shape
+    target_row_sum = 1 / n_rows
+    target_col_sum = 1 / n_cols
+    _fix_zeros(M)
+    # Iteratively adjust rows and columns
+    for _ in range(1000):  # Limit iterations to ensure convergence
+        # Normalize rows
+        row_sums = M.sum(axis=1, keepdims=True)
+        M = M / row_sums * target_row_sum
+        # Normalize columns
+        col_sums = M.sum(axis=0, keepdims=True)
+        M = M / col_sums * target_col_sum
+    return M
