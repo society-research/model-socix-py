@@ -131,15 +131,15 @@ def solve_ot_with_abm(
     )
 
 
-def plot_paths_4x4(pos_source, pos_target, paths):
+def plot_paths_4x4(pos_source, pos_target, paths, file=''):
     fig, axs = plt.subplots(4, 4, figsize=(20, 20))
     axs = axs.flatten()
     paths = np.array(paths)
     grid_size = int(np.max([pos_source, pos_target]))
-    for i, id in enumerate(set(paths[:, 0])):
+    for i, id in enumerate(set(paths[:, 1])):
         if i == 16:
             break  # only size for 16 humans in this grid
-        path = paths[paths[:, 0] == id][:, 1:3]
+        path = paths[paths[:, 1] == id][:, 2:4]
         x = path[:, 0]
         y = path[:, 1]
         ax = axs[i]
@@ -158,13 +158,24 @@ def plot_paths_4x4(pos_source, pos_target, paths):
             label="resource[1]",
         )
         ax.plot(x, y, linestyle="-", marker="", label=f"path of H[{id}]")
+        # Add arrows between points
+        for j in range(0, len(x) - 1, 10):
+            ax.annotate(
+                "",
+                xy=(x[j + 1], y[j + 1]),
+                xytext=(x[j], y[j]),
+                arrowprops=dict(arrowstyle="->", color="blue", lw=1),
+            )
         ax.set_title(f"Human[{id}]")
         ax.set_xlim(0, grid_size)
         ax.set_ylim(0, grid_size)
         ax.grid(True)
         ax.legend()
     plt.tight_layout()
-    plt.show()
+    if file:
+        plt.savefig(file)
+    else:
+        plt.show()
 
 
 def plot_ot(meta, xs, xt, solution, what, extra="", file=""):

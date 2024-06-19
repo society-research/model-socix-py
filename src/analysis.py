@@ -200,7 +200,6 @@ def optimal_parameter_metrics(xs, xt, conf, sinkhorn):
     plt.clf()
 
 
-
 def analyze_optimality(conf, SCALE):
     diffs = []
     tex["OptimalityDifferentSamples"] = 20
@@ -212,6 +211,7 @@ def analyze_optimality(conf, SCALE):
         result = solver.compare(xs, xt, abm, sinkhorn)
         diff = (result.loss_abm - result.loss_ot) / result.loss_ot * 100
         diffs.append(diff)
+    solver.plot_paths_4x4(xs, xt, abm_meta['paths'], file='output/abm-human-paths-4x4.svg')
     mean = np.mean(diffs)
     tex["OptimalityMean"] = mean
     std = np.std(diffs)
@@ -226,7 +226,7 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
 
     config = input_config.copy()
     config["steps"] = steps
-    config["hunger_starved_to_death"] = steps # no human should die here
+    config["hunger_starved_to_death"] = steps  # no human should die here
 
     N_plots = int(steps / steps_per_plot)
     if N_plots % 2 != 0:
@@ -278,7 +278,9 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
         loss = result.loss_abm
         tex["ConvergenceLoss" + "i" * n] = round(loss, 2)
         conv_loss.append(loss)
-        loss_diff = (tex["ConvergenceLoss" + "i" * n] - result.loss_ot) / result.loss_ot * 100
+        loss_diff = (
+            (tex["ConvergenceLoss" + "i" * n] - result.loss_ot) / result.loss_ot * 100
+        )
         tex["ConvergenceLossDiff" + "i" * n] = round(loss_diff, 2)
         conv_loss_diff.append(loss_diff)
         partial_meta = {
@@ -292,14 +294,13 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
         plt.subplot(N_plots // 2, 4, (2 * n) + 1)
         plt.imshow(abm, interpolation="nearest")
         print(f" - analysis of [{i}-{j}) steps")
-        plt.title(f"[{i}-{j})")
-        # plt.title(f"OT matrix: [{i}-{j}) steps,")
+        # plt.title(f"[{i}-{j})")
         # Plot 2: Visualized results of OT solution
         plt.subplot(N_plots // 2, 4, (2 * n) + 2)
         ot.plot.plot2D_samples_mat(xs, xt, abm, color=[0.5, 0.5, 1])
-        plt.plot(xs[:, 0], xs[:, 1], "+b", label="Source samples")
-        plt.plot(xt[:, 0], xt[:, 1], "xr", label="Target samples")
-        plt.legend(loc=0)
+        plt.plot(xs[:, 0], xs[:, 1], "+b")  # , label="Source samples")
+        plt.plot(xt[:, 0], xt[:, 1], "xr")  # , label="Target samples")
+        # plt.legend(loc=0)
         # plt.title(f"OT solution with sample ditributions.")
     plt.tight_layout(pad=PLOT_PAD)
     plt.savefig("output/abm-convergence-parts.svg")
@@ -310,29 +311,47 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
 
 def analyze_optimality2(trialdb, SCALE, N_tests=5, M_top=5):
     study = optuna.load_study(study_name="ABM", storage=trialdb)
+
     def top(study, n: int):
-        return sorted(
+        top_trials = sorted(
             study.trials, key=lambda x: x.value if x.value is not None else math.inf
-        )[:n]
+        )
+        values = set()
+        unique_trials = []
+        for t in top_trials:
+            params = '.'.join([str(i) for i in list(t.params.values())])
+            if params in values:
+                continue
+            values.add(params)
+            unique_trials.append(t)
+        return unique_trials[:n]
 
     data = []
+    confs = []
     for i in range(N_tests):
         xs, xt = solver.generate_distributions(SCALE=SCALE)
         data.append([])
         for trial in top(study, M_top):
             conf = trial.params
             conf["seed"] = 42
+            conf["hunger_starved_to_death"] = 6000
             sinkhorn, sinkhorn_meta = solver.solve_ot_with_sinkhorn(xs, xt, SCALE=SCALE)
             abm, abm_meta = solver.solve_ot_with_abm(xs, xt, **conf)
             abm = util.doubly_stochastic(abm)
             result = solver.compare(xs, xt, abm, sinkhorn)
             diff = (result.loss_abm - result.loss_ot) / result.loss_ot * 100
             data[-1].append(diff)
+    for trial in top(study, M_top):
+        confs.append(trial.params)
+    with open("output/abm-optimality-of-top-hyperparameter-sets.pickle", "wb") as fd:
+        pickle.dump({"data": data, "params": confs}, fd)
     diffs, stds = np.mean(data, axis=0), np.std(data, axis=0)
-    table = (r" \\ ".join([r"${:.2f} \pm {:.2f}$"] * len(diffs))).format(*np.array([[i,j] for i,j in zip(diffs, stds)]).flatten())
+    table = (r" \\ ".join([r"${:.2f} \pm {:.2f}$"] * len(diffs))).format(
+        *np.array([[i, j] for i, j in zip(diffs, stds)]).flatten()
+    )
+    tex["OptimalityTableOfMTopTrialParamsForNTests"] = table
     tex["OptimalityTableM"] = M_top
     tex["OptimalityTableN"] = N_tests
-    tex["OptimalityTableOfMTopTrialParamsForNTests"] = table
     return diffs, stds, table
 
 
@@ -345,28 +364,29 @@ if __name__ == "__main__":
     sinkhorn = analyze_ot_with_sinkhorn(xs, xt, SCALE)
 
     # old:
-    #hyperparam_optimization_results = {
+    # hyperparam_optimization_results = {
     #    "n_humans": 150,
     #    "use_last_only": True,
     #    "resource_restoration_ticks": 46,
     #    "hunger_starved_to_death": 610,
     #    # "steps": 3000,
     #    "resource_depleted_after_collections": 2,
-    #}
-    #hyperparam_optimization_results["n_humans_crowded"] = 2
+    # }
+    # hyperparam_optimization_results["n_humans_crowded"] = 2
     optunadb = "sqlite:///src/hyperparam-optimization-ipynb-2.sqlite"
     study = optuna.load_study(study_name="ABM", storage=optunadb)
     hyperparam_optimization_results = study.best_params
+    hyperparam_optimization_results["hunger_starved_to_death"] = 6000
     hyperparam_optimization_results["seed"] = 2
     for key, value in hyperparam_optimization_results.items():
         tex[key.replace("_", "")] = value
     optimal_parameter_metrics(xs, xt, hyperparam_optimization_results, sinkhorn)
 
-    print(f"optimality: top hyperparams")
-    analyze_optimality2(optunadb, 5, N_tests=5, M_top=5)
-
     print(f"optimality: comparison with sinkhorn")
     analyze_optimality(hyperparam_optimization_results, SCALE)
+
+    print(f"optimality: top hyperparams")
+    analyze_optimality2(optunadb, 5, N_tests=5, M_top=5)
 
     print(f"convergence of abm")
     analyze_convergence(xs, xt, sinkhorn, hyperparam_optimization_results)

@@ -52,11 +52,11 @@ def test_dump_yaml(tex, expected):
             assert loaded_data[key] == expected[key]
 
 
-#def test_analyze_optimality2():
+# def test_analyze_optimality2():
 #    d, s, t = analyze_optimality2("sqlite:///src/hyperparam-optimization-ipynb.sqlite", 5, N_tests=2, M_top=2)
 #    assert t == """
 #    """
 
-#def test_dumpdata():
+# def test_dumpdata():
 #    with open("output/abm-convergence-parts.pickle", "wb") as fd:
 #        pickle.dump({"conv_loss": [1, 2, 3], "conv_loss_diff": np.array([0.1, 1e-3])}, fd)
