@@ -16,6 +16,25 @@ import optimal_transport as solver
 import util
 
 
+# FIG_TYPE = 'svg'
+FIG_TYPE = "pdf"
+
+plt.rcParams.update(
+    {
+        "text.usetex": True,  # Use LaTeX for all text
+        # "font.family": "serif",             # Use serif fonts
+        # "font.serif": ["Computer Modern"],  # Use the Computer Modern font
+        "axes.labelsize": 10,  # Font size for axis labels
+        "font.size": 10,  # Font size for the figure
+        "legend.fontsize": 10,  # Font size for the legend
+        "xtick.labelsize": 10,  # Font size for x-axis tick labels
+        "ytick.labelsize": 10,  # Font size for y-axis tick labels
+        "pgf.texsystem": "pdflatex",  # Use pdflatex
+        # "pgf.rcfonts": False,               # Don't setup fonts from rc parameters
+    }
+)
+
+
 ## Set font properties for matplotlib
 # rcParams['font.family'] = 'DejaVu Serif'
 # rcParams['font.sans-serif'] = ['DejaVu Sans']
@@ -126,7 +145,9 @@ def analyze_ot_with_sinkhorn(xs, xt, SCALE):
         plt.savefig(file)
         plt.clf()
 
-    plot_ot(sinkhorn_meta, xs, xt, sinkhorn, file="output/sinkhorn-solution.svg")
+    plot_ot(
+        sinkhorn_meta, xs, xt, sinkhorn, file=f"output/sinkhorn-solution.{FIG_TYPE}"
+    )
     return sinkhorn
 
 
@@ -196,33 +217,45 @@ def optimal_parameter_metrics(xs, xt, conf, sinkhorn):
     plt.legend(loc=0)
     plt.title(f"Transport plan: sinkhorn with samples")
     plt.tight_layout(pad=PLOT_PAD)
-    plt.savefig("output/abm-hyperparam-optim-result-solution.svg")
+    plt.savefig(f"output/abm-hyperparam-optim-result-solution.{FIG_TYPE}")
     plt.clf()
 
 
-def analyze_optimality(conf, SCALE):
+def analyze_optimality(conf, SCALE, n_samples=5):
     diffs = []
-    tex["OptimalityDifferentSamples"] = 20
-    for _ in range(tex["OptimalityDifferentSamples"]):
+    distributions = []
+    for _ in range(n_samples):
         xs, xt = solver.generate_distributions(SCALE=SCALE)
+        distributions.append((xs, xt))
         sinkhorn, sinkhorn_meta = solver.solve_ot_with_sinkhorn(xs, xt, SCALE=SCALE)
         abm, abm_meta = solver.solve_ot_with_abm(xs, xt, **conf)
         abm = util.doubly_stochastic(abm)
         result = solver.compare(xs, xt, abm, sinkhorn)
         diff = (result.loss_abm - result.loss_ot) / result.loss_ot * 100
         diffs.append(diff)
-    solver.plot_paths_4x4(xs, xt, abm_meta['paths'], file='output/abm-human-paths-4x4.svg')
+    solver.plot_paths_4x4(
+        xs, xt, abm_meta["paths"], file=f"output/abm-human-paths-4x4.{FIG_TYPE}"
+    )
     mean = np.mean(diffs)
     tex["OptimalityMean"] = mean
     std = np.std(diffs)
     tex["OptimalityStd"] = std
     print(f" - diff = ({mean} +- {std})% from sinkhorn solution")
+    with open("output/abm-optimality.pickle", "wb") as fd:
+        pickle.dump({"distributions": distributions}, fd)
 
 
 def analyze_convergence(xs, xt, sinkhorn, input_config):
-    steps = 6000
+
+    def no_axis_ticks(p):
+        p.tick_params(
+            axis="x", which="both", bottom=False, top=False, labelbottom=False
+        )
+        p.tick_params(axis="y", which="both", right=False, left=False, labelleft=False)
+
+    steps = 6000  # 12000
     tex["ConvergenceStepsTotal"] = steps
-    steps_per_plot = 1000
+    steps_per_plot = 1000  # 2000
 
     config = input_config.copy()
     config["steps"] = steps
@@ -236,7 +269,7 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
 
     abm, abm_meta = solver.solve_ot_with_abm(xs, xt, **config)
     abm = util.doubly_stochastic(abm)
-    _comparison = solver.compare(xs, xt, abm, sinkhorn)
+    total_result = solver.compare(xs, xt, abm, sinkhorn)
 
     # plot the whole thing
     plt.figure(figsize=SIZE_2x1)  # Adjust the figure size as needed
@@ -256,7 +289,7 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
     plt.legend(loc=0)
     plt.title(f"OT solution with sample ditributions: All {steps} steps.")
     plt.tight_layout(pad=PLOT_PAD)
-    plt.savefig("output/abm-convergence-full.svg")
+    plt.savefig(f"output/abm-convergence-full.{FIG_TYPE}")
     plt.clf()
 
     # Plot convergence
@@ -265,7 +298,7 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
     conv_loss = []
     conv_loss_diff = []
     for n in range(N_plots):
-        i, j = n * 1000, (n + 1) * 1000
+        i, j = n * steps_per_plot, (n + 1) * steps_per_plot
         all_resources = abm_meta["collected_resources"]
         collected_resources = all_resources[
             (all_resources[:, 0] > i) & (all_resources[:, 0] < j)
@@ -293,6 +326,7 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
         # Plot 1: Cost matrix M
         plt.subplot(N_plots // 2, 4, (2 * n) + 1)
         plt.imshow(abm, interpolation="nearest")
+        no_axis_ticks(plt)
         print(f" - analysis of [{i}-{j}) steps")
         # plt.title(f"[{i}-{j})")
         # Plot 2: Visualized results of OT solution
@@ -300,13 +334,21 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
         ot.plot.plot2D_samples_mat(xs, xt, abm, color=[0.5, 0.5, 1])
         plt.plot(xs[:, 0], xs[:, 1], "+b")  # , label="Source samples")
         plt.plot(xt[:, 0], xt[:, 1], "xr")  # , label="Target samples")
+        no_axis_ticks(plt)
         # plt.legend(loc=0)
         # plt.title(f"OT solution with sample ditributions.")
     plt.tight_layout(pad=PLOT_PAD)
-    plt.savefig("output/abm-convergence-parts.svg")
+    plt.savefig(f"output/abm-convergence-parts.{FIG_TYPE}")
     plt.clf()
     with open("output/abm-convergence-parts.pickle", "wb") as fd:
-        pickle.dump({"conv_loss": conv_loss, "conv_loss_diff": conv_loss_diff}, fd)
+        pickle.dump(
+            {
+                "conv_loss": conv_loss,
+                "conv_loss_diff": conv_loss_diff,
+                "total_result": total_result,
+            },
+            fd,
+        )
 
 
 def analyze_optimality2(trialdb, SCALE, N_tests=5, M_top=5):
@@ -319,7 +361,7 @@ def analyze_optimality2(trialdb, SCALE, N_tests=5, M_top=5):
         values = set()
         unique_trials = []
         for t in top_trials:
-            params = '.'.join([str(i) for i in list(t.params.values())])
+            params = ".".join([str(i) for i in list(t.params.values())])
             if params in values:
                 continue
             values.add(params)
@@ -327,15 +369,19 @@ def analyze_optimality2(trialdb, SCALE, N_tests=5, M_top=5):
         return unique_trials[:n]
 
     data = []
+    sinkhorn_solutions = []
     confs = []
+    distributions = []
     for i in range(N_tests):
         xs, xt = solver.generate_distributions(SCALE=SCALE)
+        distributions.append((xs, xt))
         data.append([])
+        sinkhorn, sinkhorn_meta = solver.solve_ot_with_sinkhorn(xs, xt, SCALE=SCALE)
+        sinkhorn_solutions.append((sinkhorn, sinkhorn_meta))
         for trial in top(study, M_top):
             conf = trial.params
-            conf["seed"] = 42
+            conf["seed"] = 2
             conf["hunger_starved_to_death"] = 6000
-            sinkhorn, sinkhorn_meta = solver.solve_ot_with_sinkhorn(xs, xt, SCALE=SCALE)
             abm, abm_meta = solver.solve_ot_with_abm(xs, xt, **conf)
             abm = util.doubly_stochastic(abm)
             result = solver.compare(xs, xt, abm, sinkhorn)
@@ -344,15 +390,20 @@ def analyze_optimality2(trialdb, SCALE, N_tests=5, M_top=5):
     for trial in top(study, M_top):
         confs.append(trial.params)
     with open("output/abm-optimality-of-top-hyperparameter-sets.pickle", "wb") as fd:
-        pickle.dump({"data": data, "params": confs}, fd)
-    diffs, stds = np.mean(data, axis=0), np.std(data, axis=0)
-    table = (r" \\ ".join([r"${:.2f} \pm {:.2f}$"] * len(diffs))).format(
-        *np.array([[i, j] for i, j in zip(diffs, stds)]).flatten()
-    )
-    tex["OptimalityTableOfMTopTrialParamsForNTests"] = table
+        pickle.dump(
+            {
+                "data": data,
+                "params": confs,
+                "distributions": distributions,
+                "sinkhorn": sinkhorn_solutions,
+            },
+            fd,
+        )
+    diffs = np.mean(data, axis=0)
+    tex["OptimalityMeanOfMTopTrialParamsForNTests"] = np.mean(diffs)
     tex["OptimalityTableM"] = M_top
     tex["OptimalityTableN"] = N_tests
-    return diffs, stds, table
+    return diffs
 
 
 if __name__ == "__main__":
@@ -383,10 +434,15 @@ if __name__ == "__main__":
     optimal_parameter_metrics(xs, xt, hyperparam_optimization_results, sinkhorn)
 
     print(f"optimality: comparison with sinkhorn")
-    analyze_optimality(hyperparam_optimization_results, SCALE)
+    tex["OptimalityDifferentSamples"] = 30
+    analyze_optimality(
+        hyperparam_optimization_results,
+        SCALE,
+        n_samples=tex["OptimalityDifferentSamples"],
+    )
 
     print(f"optimality: top hyperparams")
-    analyze_optimality2(optunadb, 5, N_tests=5, M_top=5)
+    analyze_optimality2(optunadb, SCALE, N_tests=5, M_top=5)
 
     print(f"convergence of abm")
     analyze_convergence(xs, xt, sinkhorn, hyperparam_optimization_results)
