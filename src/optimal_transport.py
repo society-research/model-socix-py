@@ -268,8 +268,8 @@ def plot_abm(meta, xs, xt, solution, config, comparison):
     ax.legend(loc="upper left")
     # Plot 2: OT matrix `solution`
     ax = axs[0, 1]
-    ax.imshow(solution, interpolation="nearest")
-    ax.colorbar()
+    im = ax.imshow(solution, interpolation="nearest")
+    fig.colorbar(im, ax=ax)
     ax.set_title(f"OT matrix: ABM")
     # Plot 3: OT matrix `solution` with samples
     ax = axs[0, 2]
