@@ -122,13 +122,15 @@ def analyze_ot_with_sinkhorn(xs, xt, SCALE):
         plt.title(f"Source and target distributions")
         # Plot 2: Cost matrix M
         plt.subplot(r, c, 2)
-        plt.imshow(meta["loss"], interpolation="nearest")
+        plt.imshow(meta["loss_jiggled"], interpolation="nearest")
+        plt.colorbar()
         plt.xlabel("Index of source / 1")
         plt.ylabel("Index of target / 1")
         plt.title(f"Cost matrix M")
         # Plot 3: OT matrix `solution`
         plt.subplot(r, c, 3)
         plt.imshow(solution, interpolation="nearest")
+        plt.colorbar()
         plt.xlabel("Index of source / 1")
         plt.ylabel("Index of target / 1")
         plt.title(f"Transport plan: sinkhorn")
@@ -198,12 +200,13 @@ def optimal_parameter_metrics(xs, xt, conf, sinkhorn):
     abm, abm_meta = solver.solve_ot_with_abm(xs, xt, **conf)
     abm = util.doubly_stochastic(abm)
     result = solver.compare(xs, xt, abm, sinkhorn)
-    diff = (result.loss_abm - result.loss_ot) / result.loss_ot * 100
+    diff = np.abs(result.loss_abm - result.loss_ot) / result.loss_ot * 100
     tex["OptimalSolutionDiff"] = round(diff, 2)
     plt.figure(figsize=SIZE_2x1)
     # Plot 1: OT matrix `abm`
     plt.subplot(1, 2, 1)
     plt.imshow(abm, interpolation="nearest")
+    plt.colorbar()
     plt.xlabel("Index of source / 1")
     plt.ylabel("Index of target / 1")
     plt.title(f"Transport plan: sinkhorn")
@@ -231,7 +234,7 @@ def analyze_optimality(conf, SCALE, n_samples=5):
         abm, abm_meta = solver.solve_ot_with_abm(xs, xt, **conf)
         abm = util.doubly_stochastic(abm)
         result = solver.compare(xs, xt, abm, sinkhorn)
-        diff = (result.loss_abm - result.loss_ot) / result.loss_ot * 100
+        diff = np.abs(result.loss_abm - result.loss_ot) / result.loss_ot * 100
         diffs.append(diff)
     solver.plot_paths_4x4(
         xs, xt, abm_meta["paths"], file=f"output/abm-human-paths-4x4.{FIG_TYPE}"
@@ -276,6 +279,7 @@ def analyze_convergence(xs, xt, sinkhorn, input_config):
     # Plot 1: Cost matrix M
     plt.subplot(1, 2, 1)
     plt.imshow(abm, interpolation="nearest")
+    plt.colorbar()
     plt.xlabel("Index of source / 1")
     plt.ylabel("Index of target / 1")
     plt.title(f"OT matrix: All {steps} steps.")
@@ -385,7 +389,7 @@ def analyze_optimality2(trialdb, SCALE, N_tests=5, M_top=5):
             abm, abm_meta = solver.solve_ot_with_abm(xs, xt, **conf)
             abm = util.doubly_stochastic(abm)
             result = solver.compare(xs, xt, abm, sinkhorn)
-            diff = (result.loss_abm - result.loss_ot) / result.loss_ot * 100
+            diff = np.abs(result.loss_abm - result.loss_ot) / result.loss_ot * 100
             data[-1].append(diff)
     for trial in top(study, M_top):
         confs.append(trial.params)

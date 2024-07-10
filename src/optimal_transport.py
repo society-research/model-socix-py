@@ -17,6 +17,7 @@ def solve_ot_with_sinkhorn(
     jiggle_factor=0.01,
     numItermax=10000,
     regularization=1e-1,
+    metric="euclidean",  # default metric is 'seuclidean' i.e. squared euclidean! 'cityblock' = manhattan
 ):
     """solve_ot_with_sinkhorn uses the sinkhorn algorithm to solve the optimal
         transport problem between distributions pos_source and pos_target.
@@ -27,12 +28,13 @@ def solve_ot_with_sinkhorn(
         numItermax (int): max iteratations of the sinkhorn-knopp algorithm
         regularization (float): regularization of the sinkhorn-knopp algorithm
     """
-    M_loss = ot.dist(pos_source, pos_target)
+    M_loss = ot.dist(pos_source, pos_target, metric=metric)
     # NOTE: To ensure convergence of sinkhorns algorithm the distributions must
     # not have resources at the exact same distances, thus locations are "jiggled" a bit.
     jiggle = lambda x: (x + jiggle_factor * np.random.rand(*x.shape)) / SCALE
     pos_source_j, pos_target_j = jiggle(pos_source), jiggle(pos_target)
     M_loss_jiggled = ot.dist(pos_source_j, pos_target_j)
+    # M_loss_jiggled /= np.sum(M_loss_jiggled)
     n, m = len(pos_source), len(pos_target)
     # sinkhorn: needs x,y \in [0, 1] and requires jiggled input for convergence
     # (equal distances that are common with integer locations on a small scale hinder convergence)
@@ -40,7 +42,12 @@ def solve_ot_with_sinkhorn(
     sinkhorn = ot.sinkhorn(a, b, M_loss_jiggled, regularization, numItermax=numItermax)
     a, b = np.ones((n,)) / n, np.ones((m,)) / m  # uniform distribution on samples
     emd = ot.emd(a, b, M_loss)
-    return sinkhorn, {"emd": emd, "loss": M_loss, "loss_jiggled": M_loss_jiggled}
+    return sinkhorn, {
+        "emd": emd,
+        "loss": M_loss,
+        "loss_jiggled": M_loss_jiggled,
+        "x": (pos_source_j, pos_target_j),
+    }
 
 
 def solve_ot_with_abm(
@@ -131,7 +138,7 @@ def solve_ot_with_abm(
     )
 
 
-def plot_paths_4x4(pos_source, pos_target, paths, file=''):
+def plot_paths_4x4(pos_source, pos_target, paths, file=""):
     fig, axs = plt.subplots(4, 4, figsize=(20, 20))
     axs = axs.flatten()
     paths = np.array(paths)
@@ -182,13 +189,15 @@ def plot_ot(meta, xs, xt, solution, what, extra="", file=""):
     plt.figure(figsize=(18, 6))  # Adjust the figure size as needed
     # Plot 1: Cost matrix M
     plt.subplot(1, 3, 1)
-    plt.imshow(meta["loss"], interpolation="nearest")
+    plt.imshow(meta["loss_jiggled"], interpolation="nearest")
+    plt.colorbar()
     plt.xlabel("Index of source / 1")
     plt.ylabel("Index of target / 1")
     plt.title(f"Cost matrix M{extra}")
     # Plot 2: OT matrix `solution`
     plt.subplot(1, 3, 2)
     plt.imshow(solution, interpolation="nearest")
+    plt.colorbar()
     plt.xlabel("Index of source / 1")
     plt.ylabel("Index of target / 1")
     plt.title(f"Transport plan: {what}")
@@ -260,6 +269,7 @@ def plot_abm(meta, xs, xt, solution, config, comparison):
     # Plot 2: OT matrix `solution`
     ax = axs[0, 1]
     ax.imshow(solution, interpolation="nearest")
+    ax.colorbar()
     ax.set_title(f"OT matrix: ABM")
     # Plot 3: OT matrix `solution` with samples
     ax = axs[0, 2]
